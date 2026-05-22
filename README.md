@@ -21,6 +21,42 @@ This repository provides a Jenkins Shared Library plus two thin Jenkinsfile exam
     `-- dockerPromoteToProd.txt
 ```
 
+## Installation
+
+1. Push this repository to GitHub, Bitbucket, or another Git server reachable by Jenkins.
+2. In Jenkins, go to **Manage Jenkins > System > Global Trusted Pipeline Libraries**.
+3. Add a new library:
+
+```text
+Name: ci-shared-library
+Default version: main
+Retrieval method: Modern SCM
+SCM: Git
+Repository URL: https://github.com/thomas-illiet/jenkins-argocd.git
+```
+
+4. Save the Jenkins configuration.
+5. Make sure the Jenkins agents used by the jobs have the tools listed in [Jenkins Agent Requirements](#jenkins-agent-requirements).
+6. Create the Jenkins credentials listed in [Jenkins Credentials](#jenkins-credentials).
+
+The library name can be different, but the Jenkinsfiles must use the same name in `@Library('...')`.
+
+## Usage Overview
+
+Use this repository as the shared library repository. In each application repository, keep only a small Jenkinsfile that calls `dockerBuildAndDeployToDev()`. In the ArgoCD deployment repository, keep only a small Jenkinsfile that calls `dockerPromoteToProd()`.
+
+Typical repository setup:
+
+```text
+application-repo
+`-- Jenkinsfile
+
+deployment-repo
+|-- Jenkinsfile
+|-- values-dev.yaml
+`-- values-prod.yaml
+```
+
 ## Jenkinsfiles
 
 The Jenkinsfiles are intentionally small. They only load the shared library and call a reusable pipeline.
@@ -136,6 +172,40 @@ Defaults:
 
 Both paths are configurable with `VALUES_DEV_PATH` and `VALUES_PROD_PATH`.
 
+The YAML fields themselves are also configurable through yq paths. The defaults are:
+
+| Field | Default yq path |
+| --- | --- |
+| Dev image repository | `.image.repository` |
+| Dev image tag | `.image.tag` |
+| Prod image repository | `.image.repository` |
+| Prod image tag | `.image.tag` |
+
+Example for a nested chart values file:
+
+```yaml
+apps:
+  myService:
+    image:
+      repository: artifactory.example.com/docker-repo/my-service
+      tag: 1.2.3
+```
+
+Use these paths:
+
+```text
+DEV_IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
+DEV_IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
+PROD_IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
+PROD_IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
+```
+
+For keys containing hyphens, quote the key in the yq path:
+
+```text
+DEV_IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
+```
+
 ## Shared Library API
 
 ### `dockerBuildAndDeployToDev(Map config = [:])`
@@ -149,7 +219,7 @@ Main behavior:
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
 - clones the deployment repository on `devel`;
-- updates `values-dev.yaml`;
+- updates `values-dev.yaml` through configurable yq paths;
 - commits and pushes only when the values file changes.
 
 Example with defaults:
@@ -170,6 +240,8 @@ dockerBuildAndDeployToDev(
     deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
+    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    devImageTagYqPathDefault: '.apps.myService.image.tag',
     dockerBuildSecretsDefault: '''
 id=npm_token,env=NPM_TOKEN
 ''',
@@ -188,9 +260,9 @@ Main behavior:
 - validates that the PR source branch is `devel`;
 - validates that the PR target branch is `main`;
 - checks Bitbucket Data Center for at least one approval;
-- reads `image.repository` and `image.tag` from `values-dev.yaml`;
+- reads the dev image repository and tag from configurable yq paths in `values-dev.yaml`;
 - promotes the image with `docker pull`, `docker tag`, and `docker push`;
-- updates `values-prod.yaml`;
+- updates configurable yq paths in `values-prod.yaml`;
 - commits and pushes only when the production values file changes.
 
 Example:
@@ -205,7 +277,88 @@ dockerPromoteToProd(
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
     artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
-    artifactoryProdRepositoryDefault: 'docker-prod-local'
+    artifactoryProdRepositoryDefault: 'docker-prod-local',
+    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    devImageTagYqPathDefault: '.apps.myService.image.tag',
+    prodImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    prodImageTagYqPathDefault: '.apps.myService.image.tag'
+)
+```
+
+## Application Repository Usage
+
+1. Add a Jenkinsfile to the application repository.
+2. Load the shared library.
+3. Call `dockerBuildAndDeployToDev()`.
+4. Configure repository-specific defaults directly in the Jenkinsfile when useful.
+
+Minimal application Jenkinsfile:
+
+```groovy
+@Library('ci-shared-library') _
+
+dockerBuildAndDeployToDev()
+```
+
+Application Jenkinsfile with defaults:
+
+```groovy
+@Library('ci-shared-library') _
+
+dockerBuildAndDeployToDev(
+    imageNameDefault: 'my-service',
+    deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
+    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
+    artifactoryDevRepositoryDefault: 'docker-dev-local',
+    valuesDevPathDefault: 'helm/values-dev.yaml',
+    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    devImageTagYqPathDefault: '.apps.myService.image.tag'
+)
+```
+
+At build time, provide at least:
+
+```text
+VERSION=1.2.3
+IMAGE_NAME=my-service
+DEPLOYMENT_REPO_URL=https://bitbucket.example.com/scm/platform/deployment.git
+```
+
+## Deployment Repository Usage
+
+1. Add a Jenkinsfile to the ArgoCD deployment repository.
+2. Load the shared library.
+3. Call `dockerPromoteToProd()`.
+4. Configure Bitbucket, Artifactory, and YAML defaults.
+5. Configure the Jenkins job as a PR/multibranch job so Jenkins exposes `CHANGE_ID`, `CHANGE_BRANCH`, and `CHANGE_TARGET`, or pass `BITBUCKET_PR_ID` manually.
+
+Minimal deployment Jenkinsfile:
+
+```groovy
+@Library('ci-shared-library') _
+
+dockerPromoteToProd()
+```
+
+Deployment Jenkinsfile with defaults:
+
+```groovy
+@Library('ci-shared-library') _
+
+dockerPromoteToProd(
+    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
+    bitbucketProjectKeyDefault: 'PLATFORM',
+    bitbucketRepoSlugDefault: 'deployment',
+    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
+    artifactoryDevRepositoryDefault: 'docker-dev-local',
+    artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
+    artifactoryProdRepositoryDefault: 'docker-prod-local',
+    valuesDevPathDefault: 'helm/values-dev.yaml',
+    valuesProdPathDefault: 'helm/values-prod.yaml',
+    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    devImageTagYqPathDefault: '.apps.myService.image.tag',
+    prodImageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    prodImageTagYqPathDefault: '.apps.myService.image.tag'
 )
 ```
 
@@ -225,6 +378,8 @@ dockerPromoteToProd(
 | `DEPLOYMENT_REPO_URL` | HTTPS URL of the ArgoCD deployment repository. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_DEV_PATH` | Path to the dev values file. Default: `values-dev.yaml`. |
+| `DEV_IMAGE_REPOSITORY_YQ_PATH` | yq path to the dev image repository field. Default: `.image.repository`. |
+| `DEV_IMAGE_TAG_YQ_PATH` | yq path to the dev image tag field. Default: `.image.tag`. |
 | `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Git/Bitbucket. |
 
 ## Docker BuildKit Secrets
@@ -305,6 +460,10 @@ Do not use Docker build arguments for sensitive values. Build args are easier to
 | `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
 | `VALUES_DEV_PATH` | Path to the dev values file. |
 | `VALUES_PROD_PATH` | Path to the prod values file. |
+| `DEV_IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the dev image repository. Default: `.image.repository`. |
+| `DEV_IMAGE_TAG_YQ_PATH` | yq path used to read the dev image tag. Default: `.image.tag`. |
+| `PROD_IMAGE_REPOSITORY_YQ_PATH` | yq path used to write the prod image repository. Default: `.image.repository`. |
+| `PROD_IMAGE_TAG_YQ_PATH` | yq path used to write the prod image tag. Default: `.image.tag`. |
 
 ## Promotion Rules
 
@@ -313,7 +472,7 @@ The production promotion is refused when:
 - the PR source branch is not `devel`;
 - the PR target branch is not `main`;
 - the PR has no approval in Bitbucket Data Center;
-- `values-dev.yaml` does not contain `image.repository` or `image.tag`;
+- `values-dev.yaml` does not contain values at `DEV_IMAGE_REPOSITORY_YQ_PATH` or `DEV_IMAGE_TAG_YQ_PATH`;
 - the dev image repository does not start with the expected dev Artifactory prefix.
 
 The promotion copies the image to prod Artifactory. It does not delete the image from dev Artifactory.
@@ -332,8 +491,8 @@ IMAGE_NAME=my-service
 Check that:
 
 - the image exists in dev Artifactory;
-- `values-dev.yaml` contains the expected `image.repository`;
-- `values-dev.yaml` contains the expected `image.tag`;
+- `values-dev.yaml` contains the expected repository at `DEV_IMAGE_REPOSITORY_YQ_PATH`;
+- `values-dev.yaml` contains the expected tag at `DEV_IMAGE_TAG_YQ_PATH`;
 - rerunning the same version does not create a useless Git commit.
 
 ### Application pipeline with BuildKit secret
@@ -371,6 +530,6 @@ Approve the PR and rerun the pipeline.
 Check that:
 
 - the image is copied from dev Artifactory to prod Artifactory;
-- `values-prod.yaml` contains the prod repository;
-- `values-prod.yaml` contains the tag read from `values-dev.yaml`;
+- `values-prod.yaml` contains the prod repository at `PROD_IMAGE_REPOSITORY_YQ_PATH`;
+- `values-prod.yaml` contains the tag read from `values-dev.yaml` at `PROD_IMAGE_TAG_YQ_PATH`;
 - rerunning the same promotion does not create a useless Git commit.

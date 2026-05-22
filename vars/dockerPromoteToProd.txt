@@ -4,3 +4,5 @@ Example:
 
 @Library('ci-shared-library') _
 dockerPromoteToProd()
+
+The dev and prod values files and image fields are configurable through VALUES_DEV_PATH, VALUES_PROD_PATH, DEV_IMAGE_REPOSITORY_YQ_PATH, DEV_IMAGE_TAG_YQ_PATH, PROD_IMAGE_REPOSITORY_YQ_PATH, and PROD_IMAGE_TAG_YQ_PATH.
