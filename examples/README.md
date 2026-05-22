@@ -54,3 +54,16 @@ imageTagYqPathDefault: '.apps.myService.image.tag'
 4. Replace placeholder registry, Git, and credential values with your real Jenkins setup.
 5. Run the application build with a `VERSION`. The Docker build receives it as `--build-arg VERSION`, while the image tag written to values is `VERSION-yyyyMMddHHmmss`.
 6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion only uploads the referenced image to prod Artifactory and fails if that image already exists there.
+
+## Non-secret Docker build args
+
+Application examples include:
+
+```groovy
+dockerBuildArgsDefault: '''
+NODE_ENV=production
+PUBLIC_PATH=/my-service
+'''
+```
+
+Use this for non-sensitive values only. Use `DOCKER_BUILD_SECRETS` for tokens, passwords, or private files.

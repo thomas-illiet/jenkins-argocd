@@ -7,6 +7,10 @@ dockerBuildAndDeployToDev(
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
+    dockerBuildArgsDefault: '''
+NODE_ENV=production
+PUBLIC_PATH=/my-service
+''',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
     artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',

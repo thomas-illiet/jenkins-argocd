@@ -4,6 +4,7 @@ def call(Map config = [:]) {
         imageNameDefault: '',
         dockerfilePathDefault: 'Dockerfile',
         dockerBuildContextDefault: '.',
+        dockerBuildArgsDefault: '',
         dockerBuildSecretsDefault: '',
         dockerSecretTextCredentialsDefault: '',
         artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
@@ -35,6 +36,7 @@ def call(Map config = [:]) {
             string(name: 'IMAGE_NAME', defaultValue: "${cfg.imageNameDefault}", description: 'Docker image name, for example my-service.')
             string(name: 'DOCKERFILE_PATH', defaultValue: "${cfg.dockerfilePathDefault}", description: 'Path to the Dockerfile in the application repository.')
             string(name: 'DOCKER_BUILD_CONTEXT', defaultValue: "${cfg.dockerBuildContextDefault}", description: 'Docker build context.')
+            text(name: 'DOCKER_BUILD_ARGS', defaultValue: "${cfg.dockerBuildArgsDefault}", description: 'Optional non-secret Docker --build-arg entries, one per line. Example: NODE_ENV=production. VERSION is injected automatically.')
             text(name: 'DOCKER_BUILD_SECRETS', defaultValue: "${cfg.dockerBuildSecretsDefault}", description: 'Optional Docker BuildKit --secret entries, one per line. Example: id=npm_token,env=NPM_TOKEN or id=npmrc,src=.npmrc.')
             text(name: 'DOCKER_SECRET_TEXT_CREDENTIALS', defaultValue: "${cfg.dockerSecretTextCredentialsDefault}", description: 'Optional Jenkins secret text mappings, one per line: ENV_VAR=credential-id. Use with DOCKER_BUILD_SECRETS entries using env=ENV_VAR.')
 
@@ -83,6 +85,7 @@ def call(Map config = [:]) {
                         ].each { requireParam(it) }
 
                         validateDockerBuildSecrets(params.DOCKER_BUILD_SECRETS)
+                        validateDockerBuildArgs(params.DOCKER_BUILD_ARGS)
                         parseSecretTextCredentialBindings(params.DOCKER_SECRET_TEXT_CREDENTIALS)
 
                         env.VERSION = params.VERSION.trim()
@@ -91,6 +94,7 @@ def call(Map config = [:]) {
                         env.IMAGE_NAME_CLEAN = cleanDockerPath(params.IMAGE_NAME)
                         env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
                         env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
+                        env.DOCKER_BUILD_ARGS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_ARGS)
                         env.DOCKER_BUILD_SECRETS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_SECRETS)
                         env.ARTIFACTORY_DEV_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_DEV_REGISTRY)
                         env.DEV_IMAGE_REPOSITORY = joinDockerPath([
@@ -146,7 +150,15 @@ def call(Map config = [:]) {
                             sh '''
                                 set -eu
                                 set --
+                                printf '%s\n' "$DOCKER_BUILD_ARGS_EFFECTIVE" > "$WORKSPACE/.docker-build-args"
                                 printf '%s\n' "$DOCKER_BUILD_SECRETS_EFFECTIVE" > "$WORKSPACE/.docker-build-secrets"
+
+                                while IFS= read -r docker_build_arg || [ -n "$docker_build_arg" ]; do
+                                    [ -z "$docker_build_arg" ] && continue
+                                    first_char="$(printf '%s' "$docker_build_arg" | cut -c 1)"
+                                    [ "$first_char" = "#" ] && continue
+                                    set -- "$@" --build-arg "$docker_build_arg"
+                                done < "$WORKSPACE/.docker-build-args"
 
                                 while IFS= read -r docker_secret || [ -n "$docker_secret" ]; do
                                     [ -z "$docker_secret" ] && continue
@@ -290,7 +302,7 @@ def call(Map config = [:]) {
                     if [ -n "${ARTIFACTORY_DEV_REGISTRY_CLEAN:-}" ]; then
                         docker logout "$ARTIFACTORY_DEV_REGISTRY_CLEAN" >/dev/null 2>&1
                     fi
-                    rm -f "$WORKSPACE/.docker-build-secrets"
+                    rm -f "$WORKSPACE/.docker-build-args" "$WORKSPACE/.docker-build-secrets"
                 '''
             }
         }
@@ -333,6 +345,23 @@ def validateDockerBuildSecrets(String value) {
         }
         if (!line.contains(',env=') && !line.contains(',src=')) {
             error("DOCKER_BUILD_SECRETS line ${index + 1} must include either ,env= or ,src=.")
+        }
+    }
+}
+
+def validateDockerBuildArgs(String value) {
+    (value ?: '').readLines().eachWithIndex { rawLine, index ->
+        def line = rawLine.trim()
+        if (!line || line.startsWith('#')) {
+            return
+        }
+
+        def key = line.contains('=') ? line.substring(0, line.indexOf('=')) : line
+        if (!(key ==~ /[A-Za-z_][A-Za-z0-9_]*/)) {
+            error("DOCKER_BUILD_ARGS line ${index + 1} has an invalid build arg name: ${key}.")
+        }
+        if (key == 'VERSION') {
+            error('DOCKER_BUILD_ARGS must not define VERSION because VERSION is injected automatically from the Jenkins parameter.')
         }
     }
 }

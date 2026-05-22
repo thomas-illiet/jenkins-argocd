@@ -188,6 +188,7 @@ Dev and prod use the same values structure. Promotion reads the dev image refere
 - checks whether the dev image tag already exists before building;
 - builds the Docker image;
 - forwards the original `VERSION` parameter to Docker as `--build-arg VERSION=<VERSION>`;
+- supports optional non-secret Docker `--build-arg` entries;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
 - prepares `~/.ssh/known_hosts` with `ssh-keyscan`;
@@ -224,6 +225,7 @@ Main parameters:
 | `IMAGE_NAME` | Docker image name, for example `my-service`. |
 | `DOCKERFILE_PATH` | Dockerfile path. Default: `Dockerfile`. |
 | `DOCKER_BUILD_CONTEXT` | Docker build context. Default: `.`. |
+| `DOCKER_BUILD_ARGS` | Optional non-secret Docker `--build-arg` entries, one per line. `VERSION` is reserved and injected automatically. |
 | `DOCKER_BUILD_SECRETS` | Optional Docker BuildKit `--secret` entries, one per line. |
 | `DOCKER_SECRET_TEXT_CREDENTIALS` | Optional Jenkins secret text mappings, one per line. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
@@ -253,6 +255,31 @@ DEPLOYMENT_GIT_SSH_HOST=git.example.com
 DEPLOYMENT_GIT_SSH_PORT=7999
 ```
 
+## Docker Build Args
+
+Use `DOCKER_BUILD_ARGS` for non-secret build-time values:
+
+```text
+DOCKER_BUILD_ARGS:
+NODE_ENV=production
+PUBLIC_PATH=/my-service
+ENABLE_METRICS=true
+```
+
+The shared library turns each non-empty, non-comment line into a Docker build argument:
+
+```sh
+docker build --build-arg NODE_ENV=production --build-arg PUBLIC_PATH=/my-service --build-arg ENABLE_METRICS=true ...
+```
+
+`VERSION` is reserved. The pipeline always injects it from the Jenkins `VERSION` parameter:
+
+```sh
+--build-arg VERSION="$VERSION"
+```
+
+Use `DOCKER_BUILD_SECRETS` instead when a value is sensitive.
+
 ## Docker BuildKit Secrets
 
 Create a Jenkins `Secret text` credential:
@@ -275,7 +302,7 @@ id=npm_token,env=NPM_TOKEN
 The shared library runs:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build --build-arg VERSION="$VERSION" --secret id=npm_token,env=NPM_TOKEN ...
+DOCKER_BUILDKIT=1 docker build --build-arg NODE_ENV=production --build-arg VERSION="$VERSION" --secret id=npm_token,env=NPM_TOKEN ...
 ```
 
 Dockerfile example:
