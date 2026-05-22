@@ -58,11 +58,20 @@ The library name can be different, but Jenkinsfiles must use the same name in `@
 
 The pipelines expect these Jenkins credentials:
 
-| Credential parameter | Purpose |
-| --- | --- |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | `username/password` credential for Docker login to the dev Artifactory repository. |
-| `ARTIFACTORY_PROD_CREDENTIALS_ID` | `username/password` credential for Docker login to the prod Artifactory repository. |
-| `GIT_CREDENTIALS_ID` | `SSH Username with private key` credential for deployment Git clone and push. The pipeline binds it with `sshUserPrivateKey`. |
+| Library config or parameter | Type | Purpose |
+| --- | --- | --- |
+| `artifactoryCredentialsId` | `username/password` | Shared Artifactory credential used for both dev and prod Docker login. |
+| `GIT_CREDENTIALS_ID` | `SSH Username with private key` | Deployment Git clone and push credential. The application pipeline binds it with `sshUserPrivateKey`. |
+
+`artifactoryCredentialsId` is configured in the Jenkinsfile call. The declarative pipeline exposes it through:
+
+```groovy
+environment {
+    ARTIFACTORY_CREDENTIALS = credentials('artifactory-docker')
+}
+```
+
+Jenkins then creates `ARTIFACTORY_CREDENTIALS_USR` and `ARTIFACTORY_CREDENTIALS_PSW`. Docker login stages use those environment variables directly and do not wrap the login commands with `withCredentials`.
 
 The application pipeline can also inject Jenkins `Secret text` credentials into Docker BuildKit secrets.
 
@@ -211,6 +220,7 @@ dockerBuildAndDeployToDev(
     imageTagYqPath: '.apps.myService.image.tag',
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',
+    artifactoryCredentialsId: 'artifactory-docker',
     gitCredentialsId: 'deployment-git-ssh',
     deploymentGitSshHost: 'git.example.com',
     deploymentGitSshPort: '7999'
@@ -230,7 +240,6 @@ Main parameters:
 | `DOCKER_SECRET_TEXT_CREDENTIALS` | Optional Jenkins secret text mappings, one per line. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Artifactory base host, without protocol. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository subdomain. |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `DEPLOYMENT_REPO_URL` | SSH URL of the ArgoCD deployment repository, for example `ssh://git@git.example.com:7999/platform/deployment.git`. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
@@ -240,6 +249,12 @@ Main parameters:
 | `DEPLOYMENT_GIT_SSH_HOST` | Optional Git SSH host used by `ssh-keyscan`. If empty, the pipeline infers it from `DEPLOYMENT_REPO_URL`. |
 | `DEPLOYMENT_GIT_SSH_PORT` | Git SSH port used by `ssh-keyscan`. Default: `22`. |
 | `DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES` | Comma-separated `ssh-keyscan` key types. Default: `rsa,ecdsa,ed25519`. |
+
+Application pipeline config options that are intentionally not runtime parameters:
+
+| Config key | Default | Description |
+| --- | --- | --- |
+| `artifactoryCredentialsId` | `artifactory-docker` | Jenkins `username/password` credential bound as `ARTIFACTORY_CREDENTIALS` in the pipeline environment. |
 
 For deployment Git access, create a Jenkins credential of type `SSH Username with private key`. The private key should be usable non-interactively by the Jenkins agent. The application pipeline uses that credential through `sshUserPrivateKey`, prepares `~/.ssh/known_hosts` with `ssh-keyscan`, configures Git for the clone and push, then restores any previous global `core.sshCommand`.
 
@@ -340,7 +355,8 @@ dockerPromoteToProd(
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',
     artifactoryProdRegistry: 'artifactory-prod.example.com',
-    artifactoryProdRepository: 'docker-prod-local'
+    artifactoryProdRepository: 'docker-prod-local',
+    artifactoryCredentialsId: 'artifactory-docker'
 )
 ```
 
@@ -350,13 +366,17 @@ Main parameters:
 | --- | --- |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Artifactory base host. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository subdomain. |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `ARTIFACTORY_PROD_REGISTRY` | Prod Artifactory base host. |
 | `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository subdomain. |
-| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository. |
 | `IMAGE_TAG_YQ_PATH` | yq path used to read the image tag. |
+
+Promotion pipeline config options that are intentionally not runtime parameters:
+
+| Config key | Default | Description |
+| --- | --- | --- |
+| `artifactoryCredentialsId` | `artifactory-docker` | Shared Jenkins `username/password` credential for dev and prod Docker login. |
 
 ## Promotion Rules
 

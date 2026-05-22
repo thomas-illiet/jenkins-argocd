@@ -2,6 +2,8 @@ Runs the deployment pipeline that promotes the Docker image referenced by the ch
 
 Artifactory Docker repositories are addressed as subdomains: ARTIFACTORY_*_REPOSITORY.ARTIFACTORY_*_REGISTRY/image-name.
 
+The same Jenkins username/password credential is used for dev and prod Artifactory. Configure it with artifactoryCredentialsId; the pipeline exposes it as ARTIFACTORY_CREDENTIALS_USR and ARTIFACTORY_CREDENTIALS_PSW and uses those variables directly for Docker login.
+
 Example:
 
 @Library('ci-shared-library') _

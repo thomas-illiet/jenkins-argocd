@@ -2,6 +2,8 @@ Runs the application pipeline that builds a Docker image, pushes it to the dev A
 
 Artifactory Docker repositories are addressed as subdomains: ARTIFACTORY_DEV_REPOSITORY.ARTIFACTORY_DEV_REGISTRY/image-name.
 
+The Artifactory username/password credential is configured with artifactoryCredentialsId and exposed by the declarative environment as ARTIFACTORY_CREDENTIALS_USR and ARTIFACTORY_CREDENTIALS_PSW. Docker login steps use those variables directly.
+
 Example:
 
 @Library('ci-shared-library') _

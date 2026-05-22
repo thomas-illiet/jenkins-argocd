@@ -51,7 +51,7 @@ imageTagYqPath: '.apps.myService.image.tag'
 1. Copy `examples/application-repo/Jenkinsfile` into an application repository.
 2. Copy `examples/deployment-repo/Jenkinsfile` into the ArgoCD deployment repository.
 3. Keep or adapt the `helm/values.yaml` layout.
-4. Replace placeholder registry, Git, and credential values with your real Jenkins setup.
+4. Replace placeholder registry, Git, and credential values with your real Jenkins setup. Both dev and prod Docker logins use the shared `artifactoryCredentialsId` configured in the Jenkinsfile.
 5. Run the application build with an `IMAGE_VERSION`. The Docker build receives it as `--build-arg imageVersion`, while the image tag written to values is `IMAGE_VERSION-yyyyMMddHHmmss`.
 6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion only uploads the referenced image to prod Artifactory and fails if that image already exists there.
 

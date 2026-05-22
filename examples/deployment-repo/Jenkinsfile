@@ -6,8 +6,7 @@ dockerPromoteToProd(
     imageTagYqPath: '.apps.myService.image.tag',
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',
-    artifactoryDevCredentialsId: 'artifactory-dev-docker',
     artifactoryProdRegistry: 'artifactory-prod.example.com',
     artifactoryProdRepository: 'docker-prod-local',
-    artifactoryProdCredentialsId: 'artifactory-prod-docker'
+    artifactoryCredentialsId: 'artifactory-docker'
 )

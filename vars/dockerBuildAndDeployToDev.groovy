@@ -9,7 +9,7 @@ def call(Map config = [:]) {
         dockerSecretTextCredentials: '',
         artifactoryDevRegistry: 'artifactory-dev.example.com',
         artifactoryDevRepository: 'docker-dev-local',
-        artifactoryDevCredentialsId: 'artifactory-dev-docker',
+        artifactoryCredentialsId: 'artifactory-docker',
         deploymentRepoUrl: '',
         deploymentBranch: 'devel',
         valuesPath: 'values.yaml',
@@ -42,7 +42,6 @@ def call(Map config = [:]) {
 
             string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistry}", description: 'Dev Docker registry host, without protocol.')
             string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepository}", description: 'Dev Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsId}", description: 'Jenkins username/password credentials for dev Artifactory.')
 
             string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrl}", description: 'SSH URL of the ArgoCD/deployment Git repository.')
             string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranch}", description: 'Deployment branch to update.')
@@ -60,6 +59,7 @@ def call(Map config = [:]) {
 
         environment {
             DEPLOYMENT_WORKDIR = 'deployment-repo'
+            ARTIFACTORY_CREDENTIALS = credentials("${cfg.artifactoryCredentialsId}")
         }
 
         stages {
@@ -73,7 +73,6 @@ def call(Map config = [:]) {
                             'DOCKER_BUILD_CONTEXT',
                             'ARTIFACTORY_DEV_REGISTRY',
                             'ARTIFACTORY_DEV_REPOSITORY',
-                            'ARTIFACTORY_DEV_CREDENTIALS_ID',
                             'DEPLOYMENT_REPO_URL',
                             'DEPLOYMENT_BRANCH',
                             'VALUES_PATH',
@@ -123,25 +122,17 @@ def call(Map config = [:]) {
 
             stage('Check dev image does not exist') {
                 steps {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: params.ARTIFACTORY_DEV_CREDENTIALS_ID,
-                            usernameVariable: 'ARTIFACTORY_DEV_USERNAME',
-                            passwordVariable: 'ARTIFACTORY_DEV_PASSWORD'
-                        )
-                    ]) {
-                        sh '''
-                            set -eu
-                            printf '%s' "$ARTIFACTORY_DEV_PASSWORD" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
-                                --username "$ARTIFACTORY_DEV_USERNAME" \
-                                --password-stdin
+                    sh '''
+                        set -eu
+                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                            --password-stdin
 
-                            if docker manifest inspect "$DEV_IMAGE" >/dev/null 2>&1; then
-                                echo "Image already exists in dev Artifactory and cannot be overwritten: $DEV_IMAGE" >&2
-                                exit 1
-                            fi
-                        '''
-                    }
+                        if docker manifest inspect "$DEV_IMAGE" >/dev/null 2>&1; then
+                            echo "Image already exists in dev Artifactory and cannot be overwritten: $DEV_IMAGE" >&2
+                            exit 1
+                        fi
+                    '''
                 }
             }
 
@@ -192,21 +183,13 @@ def call(Map config = [:]) {
 
             stage('Push image to dev Artifactory') {
                 steps {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: params.ARTIFACTORY_DEV_CREDENTIALS_ID,
-                            usernameVariable: 'ARTIFACTORY_DEV_USERNAME',
-                            passwordVariable: 'ARTIFACTORY_DEV_PASSWORD'
-                        )
-                    ]) {
-                        sh '''
-                            set -eu
-                            printf '%s' "$ARTIFACTORY_DEV_PASSWORD" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
-                                --username "$ARTIFACTORY_DEV_USERNAME" \
-                                --password-stdin
-                            docker push "$DEV_IMAGE"
-                        '''
-                    }
+                    sh '''
+                        set -eu
+                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                            --password-stdin
+                        docker push "$DEV_IMAGE"
+                    '''
                 }
             }
 

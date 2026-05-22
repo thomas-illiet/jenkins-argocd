@@ -2,10 +2,9 @@ def call(Map config = [:]) {
     def cfg = [
         artifactoryDevRegistry: 'artifactory-dev.example.com',
         artifactoryDevRepository: 'docker-dev-local',
-        artifactoryDevCredentialsId: 'artifactory-dev-docker',
+        artifactoryCredentialsId: 'artifactory-docker',
         artifactoryProdRegistry: 'artifactory-prod.example.com',
         artifactoryProdRepository: 'docker-prod-local',
-        artifactoryProdCredentialsId: 'artifactory-prod-docker',
         valuesPath: 'values.yaml',
         imageRepositoryYqPath: '.image.repository',
         imageTagYqPath: '.image.tag'
@@ -22,14 +21,16 @@ def call(Map config = [:]) {
         parameters {
             string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistry}", description: 'Dev Docker registry host, without protocol.')
             string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepository}", description: 'Dev Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsId}", description: 'Jenkins username/password credentials for dev Artifactory.')
             string(name: 'ARTIFACTORY_PROD_REGISTRY', defaultValue: "${cfg.artifactoryProdRegistry}", description: 'Production Docker registry host, without protocol.')
             string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepository}", description: 'Production Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_PROD_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryProdCredentialsId}", description: 'Jenkins username/password credentials for prod Artifactory.')
 
             string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPath}", description: 'Relative path to the values file in the checked-out deployment repository, for example helm/values.yaml.')
             string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPath}", description: 'yq path to the image repository field in the values file.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPath}", description: 'yq path to the image tag field in the values file.')
+        }
+
+        environment {
+            ARTIFACTORY_CREDENTIALS = credentials("${cfg.artifactoryCredentialsId}")
         }
 
         stages {
@@ -39,10 +40,8 @@ def call(Map config = [:]) {
                         [
                             'ARTIFACTORY_DEV_REGISTRY',
                             'ARTIFACTORY_DEV_REPOSITORY',
-                            'ARTIFACTORY_DEV_CREDENTIALS_ID',
                             'ARTIFACTORY_PROD_REGISTRY',
                             'ARTIFACTORY_PROD_REPOSITORY',
-                            'ARTIFACTORY_PROD_CREDENTIALS_ID',
                             'VALUES_PATH',
                             'IMAGE_REPOSITORY_YQ_PATH',
                             'IMAGE_TAG_YQ_PATH'
@@ -106,38 +105,25 @@ def call(Map config = [:]) {
 
             stage('Promote Docker image to prod Artifactory') {
                 steps {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: params.ARTIFACTORY_DEV_CREDENTIALS_ID,
-                            usernameVariable: 'ARTIFACTORY_DEV_USERNAME',
-                            passwordVariable: 'ARTIFACTORY_DEV_PASSWORD'
-                        ),
-                        usernamePassword(
-                            credentialsId: params.ARTIFACTORY_PROD_CREDENTIALS_ID,
-                            usernameVariable: 'ARTIFACTORY_PROD_USERNAME',
-                            passwordVariable: 'ARTIFACTORY_PROD_PASSWORD'
-                        )
-                    ]) {
-                        sh '''
-                            set -eu
-                            printf '%s' "$ARTIFACTORY_PROD_PASSWORD" | docker login "$ARTIFACTORY_PROD_REGISTRY_CLEAN" \
-                                --username "$ARTIFACTORY_PROD_USERNAME" \
-                                --password-stdin
+                    sh '''
+                        set -eu
+                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_PROD_REGISTRY_CLEAN" \
+                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                            --password-stdin
 
-                            if docker manifest inspect "$PROD_IMAGE" >/dev/null 2>&1; then
-                                echo "Image already exists in prod Artifactory and cannot be overwritten: $PROD_IMAGE" >&2
-                                exit 1
-                            fi
+                        if docker manifest inspect "$PROD_IMAGE" >/dev/null 2>&1; then
+                            echo "Image already exists in prod Artifactory and cannot be overwritten: $PROD_IMAGE" >&2
+                            exit 1
+                        fi
 
-                            printf '%s' "$ARTIFACTORY_DEV_PASSWORD" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
-                                --username "$ARTIFACTORY_DEV_USERNAME" \
-                                --password-stdin
+                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                            --password-stdin
 
-                            docker pull "$DEV_IMAGE"
-                            docker tag "$DEV_IMAGE" "$PROD_IMAGE"
-                            docker push "$PROD_IMAGE"
-                        '''
-                    }
+                        docker pull "$DEV_IMAGE"
+                        docker tag "$DEV_IMAGE" "$PROD_IMAGE"
+                        docker push "$PROD_IMAGE"
+                    '''
                 }
             }
         }

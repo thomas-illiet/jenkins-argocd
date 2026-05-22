@@ -13,7 +13,7 @@ PUBLIC_PATH=/my-service
 ''',
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',
-    artifactoryDevCredentialsId: 'artifactory-dev-docker',
+    artifactoryCredentialsId: 'artifactory-docker',
     gitCredentialsId: 'deployment-git-ssh',
     deploymentGitSshHost: 'git.example.com',
     deploymentGitSshPort: '7999',
