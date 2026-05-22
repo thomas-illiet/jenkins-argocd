@@ -1,5 +1,7 @@
 Runs the deployment pipeline that promotes the Docker image referenced by the checked-out values file from dev Artifactory to prod Artifactory without modifying Git.
 
+Artifactory Docker repositories are addressed as subdomains: ARTIFACTORY_*_REPOSITORY.ARTIFACTORY_*_REGISTRY/image-name.
+
 Example:
 
 @Library('ci-shared-library') _

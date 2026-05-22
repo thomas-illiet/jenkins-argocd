@@ -26,7 +26,7 @@ helm/values.yaml
 This is handled by:
 
 ```groovy
-valuesPathDefault: 'helm/values.yaml'
+valuesPath: 'helm/values.yaml'
 ```
 
 The image fields are also nested:
@@ -35,15 +35,15 @@ The image fields are also nested:
 apps:
   myService:
     image:
-      repository: artifactory-dev.example.com/docker-dev-local/my-service
+      repository: docker-dev-local.artifactory-dev.example.com/my-service
       tag: 1.2.3-20260522143015
 ```
 
 This is handled by:
 
 ```groovy
-imageRepositoryYqPathDefault: '.apps.myService.image.repository'
-imageTagYqPathDefault: '.apps.myService.image.tag'
+imageRepositoryYqPath: '.apps.myService.image.repository'
+imageTagYqPath: '.apps.myService.image.tag'
 ```
 
 ## How to use
@@ -52,7 +52,7 @@ imageTagYqPathDefault: '.apps.myService.image.tag'
 2. Copy `examples/deployment-repo/Jenkinsfile` into the ArgoCD deployment repository.
 3. Keep or adapt the `helm/values.yaml` layout.
 4. Replace placeholder registry, Git, and credential values with your real Jenkins setup.
-5. Run the application build with a `VERSION`. The Docker build receives it as `--build-arg VERSION`, while the image tag written to values is `VERSION-yyyyMMddHHmmss`.
+5. Run the application build with an `IMAGE_VERSION`. The Docker build receives it as `--build-arg imageVersion`, while the image tag written to values is `IMAGE_VERSION-yyyyMMddHHmmss`.
 6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion only uploads the referenced image to prod Artifactory and fails if that image already exists there.
 
 ## Non-secret Docker build args
@@ -60,7 +60,7 @@ imageTagYqPathDefault: '.apps.myService.image.tag'
 Application examples include:
 
 ```groovy
-dockerBuildArgsDefault: '''
+dockerBuildArgs: '''
 NODE_ENV=production
 PUBLIC_PATH=/my-service
 '''

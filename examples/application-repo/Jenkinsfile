@@ -1,22 +1,22 @@
 @Library('ci-shared-library') _
 
 dockerBuildAndDeployToDev(
-    imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'ssh://git@git.example.com:7999/platform/deployment.git',
-    deploymentBranchDefault: 'devel',
-    valuesPathDefault: 'helm/values.yaml',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag',
-    dockerBuildArgsDefault: '''
+    imageName: 'my-service',
+    deploymentRepoUrl: 'ssh://git@git.example.com:7999/platform/deployment.git',
+    deploymentBranch: 'devel',
+    valuesPath: 'helm/values.yaml',
+    imageRepositoryYqPath: '.apps.myService.image.repository',
+    imageTagYqPath: '.apps.myService.image.tag',
+    dockerBuildArgs: '''
 NODE_ENV=production
 PUBLIC_PATH=/my-service
 ''',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
-    gitCredentialsIdDefault: 'deployment-git-ssh',
-    deploymentGitSshHostDefault: 'git.example.com',
-    deploymentGitSshPortDefault: '7999',
-    gitAuthorNameDefault: 'jenkins',
-    gitAuthorEmailDefault: 'jenkins@example.com'
+    artifactoryDevRegistry: 'artifactory-dev.example.com',
+    artifactoryDevRepository: 'docker-dev-local',
+    artifactoryDevCredentialsId: 'artifactory-dev-docker',
+    gitCredentialsId: 'deployment-git-ssh',
+    deploymentGitSshHost: 'git.example.com',
+    deploymentGitSshPort: '7999',
+    gitAuthorName: 'jenkins',
+    gitAuthorEmail: 'jenkins@example.com'
 )

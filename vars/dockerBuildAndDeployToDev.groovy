@@ -1,26 +1,26 @@
 def call(Map config = [:]) {
     def cfg = [
-        versionDefault: '',
-        imageNameDefault: '',
-        dockerfilePathDefault: 'Dockerfile',
-        dockerBuildContextDefault: '.',
-        dockerBuildArgsDefault: '',
-        dockerBuildSecretsDefault: '',
-        dockerSecretTextCredentialsDefault: '',
-        artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-        artifactoryDevRepositoryDefault: 'docker-dev-local',
-        artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
-        deploymentRepoUrlDefault: '',
-        deploymentBranchDefault: 'devel',
-        valuesPathDefault: 'values.yaml',
-        imageRepositoryYqPathDefault: '.image.repository',
-        imageTagYqPathDefault: '.image.tag',
-        gitCredentialsIdDefault: 'deployment-git-ssh',
-        deploymentGitSshHostDefault: '',
-        deploymentGitSshPortDefault: '22',
-        deploymentGitSshKeyscanTypesDefault: 'rsa,ecdsa,ed25519',
-        gitAuthorNameDefault: 'jenkins',
-        gitAuthorEmailDefault: 'jenkins@example.com'
+        imageVersion: '',
+        imageName: '',
+        dockerfilePath: 'Dockerfile',
+        dockerBuildContext: '.',
+        dockerBuildArgs: '',
+        dockerBuildSecrets: '',
+        dockerSecretTextCredentials: '',
+        artifactoryDevRegistry: 'artifactory-dev.example.com',
+        artifactoryDevRepository: 'docker-dev-local',
+        artifactoryDevCredentialsId: 'artifactory-dev-docker',
+        deploymentRepoUrl: '',
+        deploymentBranch: 'devel',
+        valuesPath: 'values.yaml',
+        imageRepositoryYqPath: '.image.repository',
+        imageTagYqPath: '.image.tag',
+        gitCredentialsId: 'deployment-git-ssh',
+        deploymentGitSshHost: '',
+        deploymentGitSshPort: '22',
+        deploymentGitSshKeyscanTypes: 'rsa,ecdsa,ed25519',
+        gitAuthorName: 'jenkins',
+        gitAuthorEmail: 'jenkins@example.com'
     ] + config
 
     pipeline {
@@ -32,30 +32,30 @@ def call(Map config = [:]) {
         }
 
         parameters {
-            string(name: 'VERSION', defaultValue: "${cfg.versionDefault}", description: 'Required application version. It is forwarded to Docker as build arg VERSION and used as the image tag prefix.')
-            string(name: 'IMAGE_NAME', defaultValue: "${cfg.imageNameDefault}", description: 'Docker image name, for example my-service.')
-            string(name: 'DOCKERFILE_PATH', defaultValue: "${cfg.dockerfilePathDefault}", description: 'Path to the Dockerfile in the application repository.')
-            string(name: 'DOCKER_BUILD_CONTEXT', defaultValue: "${cfg.dockerBuildContextDefault}", description: 'Docker build context.')
-            text(name: 'DOCKER_BUILD_ARGS', defaultValue: "${cfg.dockerBuildArgsDefault}", description: 'Optional non-secret Docker --build-arg entries, one per line. Example: NODE_ENV=production. VERSION is injected automatically.')
-            text(name: 'DOCKER_BUILD_SECRETS', defaultValue: "${cfg.dockerBuildSecretsDefault}", description: 'Optional Docker BuildKit --secret entries, one per line. Example: id=npm_token,env=NPM_TOKEN or id=npmrc,src=.npmrc.')
-            text(name: 'DOCKER_SECRET_TEXT_CREDENTIALS', defaultValue: "${cfg.dockerSecretTextCredentialsDefault}", description: 'Optional Jenkins secret text mappings, one per line: ENV_VAR=credential-id. Use with DOCKER_BUILD_SECRETS entries using env=ENV_VAR.')
+            string(name: 'IMAGE_VERSION', defaultValue: "${cfg.imageVersion}", description: 'Required image version. It is forwarded to Docker as build arg imageVersion and used as the image tag prefix.')
+            string(name: 'IMAGE_NAME', defaultValue: "${cfg.imageName}", description: 'Docker image name, for example my-service.')
+            string(name: 'DOCKERFILE_PATH', defaultValue: "${cfg.dockerfilePath}", description: 'Path to the Dockerfile in the application repository.')
+            string(name: 'DOCKER_BUILD_CONTEXT', defaultValue: "${cfg.dockerBuildContext}", description: 'Docker build context.')
+            text(name: 'DOCKER_BUILD_ARGS', defaultValue: "${cfg.dockerBuildArgs}", description: 'Optional non-secret Docker --build-arg entries, one per line. Example: NODE_ENV=production. imageVersion is injected automatically.')
+            text(name: 'DOCKER_BUILD_SECRETS', defaultValue: "${cfg.dockerBuildSecrets}", description: 'Optional Docker BuildKit --secret entries, one per line. Example: id=npm_token,env=NPM_TOKEN or id=npmrc,src=.npmrc.')
+            text(name: 'DOCKER_SECRET_TEXT_CREDENTIALS', defaultValue: "${cfg.dockerSecretTextCredentials}", description: 'Optional Jenkins secret text mappings, one per line: ENV_VAR=credential-id. Use with DOCKER_BUILD_SECRETS entries using env=ENV_VAR.')
 
-            string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistryDefault}", description: 'Dev Docker registry host, without protocol.')
-            string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepositoryDefault}", description: 'Dev Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsIdDefault}", description: 'Jenkins username/password credentials for dev Artifactory.')
+            string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistry}", description: 'Dev Docker registry host, without protocol.')
+            string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepository}", description: 'Dev Artifactory Docker repository.')
+            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsId}", description: 'Jenkins username/password credentials for dev Artifactory.')
 
-            string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'SSH URL of the ArgoCD/deployment Git repository.')
-            string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranchDefault}", description: 'Deployment branch to update.')
-            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file inside the deployment repository, for example helm/values.yaml.')
-            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
-            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
-            string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsIdDefault}", description: 'Jenkins SSH username/private key credentials for deployment Git clone and push.')
-            string(name: 'DEPLOYMENT_GIT_SSH_HOST', defaultValue: "${cfg.deploymentGitSshHostDefault}", description: 'Optional Git SSH host for ssh-keyscan. If empty, it is inferred from DEPLOYMENT_REPO_URL.')
-            string(name: 'DEPLOYMENT_GIT_SSH_PORT', defaultValue: "${cfg.deploymentGitSshPortDefault}", description: 'Git SSH port used by ssh-keyscan.')
-            string(name: 'DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES', defaultValue: "${cfg.deploymentGitSshKeyscanTypesDefault}", description: 'Comma-separated ssh-keyscan key types.')
+            string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrl}", description: 'SSH URL of the ArgoCD/deployment Git repository.')
+            string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranch}", description: 'Deployment branch to update.')
+            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPath}", description: 'Relative path to the values file inside the deployment repository, for example helm/values.yaml.')
+            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPath}", description: 'yq path to the image repository field.')
+            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPath}", description: 'yq path to the image tag field.')
+            string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsId}", description: 'Jenkins SSH username/private key credentials for deployment Git clone and push.')
+            string(name: 'DEPLOYMENT_GIT_SSH_HOST', defaultValue: "${cfg.deploymentGitSshHost}", description: 'Optional Git SSH host for ssh-keyscan. If empty, it is inferred from DEPLOYMENT_REPO_URL.')
+            string(name: 'DEPLOYMENT_GIT_SSH_PORT', defaultValue: "${cfg.deploymentGitSshPort}", description: 'Git SSH port used by ssh-keyscan.')
+            string(name: 'DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES', defaultValue: "${cfg.deploymentGitSshKeyscanTypes}", description: 'Comma-separated ssh-keyscan key types.')
 
-            string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for deployment commits.')
-            string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for deployment commits.')
+            string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorName}", description: 'Git author name used for deployment commits.')
+            string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmail}", description: 'Git author email used for deployment commits.')
         }
 
         environment {
@@ -67,7 +67,7 @@ def call(Map config = [:]) {
                 steps {
                     script {
                         [
-                            'VERSION',
+                            'IMAGE_VERSION',
                             'IMAGE_NAME',
                             'DOCKERFILE_PATH',
                             'DOCKER_BUILD_CONTEXT',
@@ -88,16 +88,19 @@ def call(Map config = [:]) {
                         validateDockerBuildArgs(params.DOCKER_BUILD_ARGS)
                         parseSecretTextCredentialBindings(params.DOCKER_SECRET_TEXT_CREDENTIALS)
 
-                        env.VERSION = params.VERSION.trim()
+                        env.IMAGE_VERSION = params.IMAGE_VERSION.trim()
                         env.IMAGE_TIMESTAMP = new Date(currentBuild.startTimeInMillis).format('yyyyMMddHHmmss')
-                        env.IMAGE_TAG = "${env.VERSION}-${env.IMAGE_TIMESTAMP}"
+                        env.IMAGE_TAG = "${env.IMAGE_VERSION}-${env.IMAGE_TIMESTAMP}"
                         env.IMAGE_NAME_CLEAN = cleanDockerPath(params.IMAGE_NAME)
                         env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
                         env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
                         env.DOCKER_BUILD_ARGS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_ARGS)
                         env.DOCKER_BUILD_SECRETS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_SECRETS)
-                        env.ARTIFACTORY_DEV_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_DEV_REGISTRY)
-                        env.DEV_IMAGE_REPOSITORY = joinDockerPath([
+                        env.ARTIFACTORY_DEV_REGISTRY_CLEAN = joinArtifactoryDockerPath([
+                            params.ARTIFACTORY_DEV_REGISTRY,
+                            params.ARTIFACTORY_DEV_REPOSITORY
+                        ])
+                        env.DEV_IMAGE_REPOSITORY = joinArtifactoryDockerPath([
                             params.ARTIFACTORY_DEV_REGISTRY,
                             params.ARTIFACTORY_DEV_REPOSITORY,
                             env.IMAGE_NAME_CLEAN
@@ -169,7 +172,7 @@ def call(Map config = [:]) {
 
                                 DOCKER_BUILDKIT=1 docker build \
                                     "$@" \
-                                    --build-arg "VERSION=$VERSION" \
+                                    --build-arg "imageVersion=$IMAGE_VERSION" \
                                     -f "$DOCKERFILE_PATH" \
                                     -t "$DEV_IMAGE" \
                                     "$DOCKER_BUILD_CONTEXT"
@@ -315,10 +318,16 @@ def cleanDockerPath(String value) {
         .replaceAll(/\/+$/, '')
 }
 
-def joinDockerPath(List<String> parts) {
-    return parts.collect { cleanDockerPath(it) }
-        .findAll { it }
-        .join('/')
+def joinArtifactoryDockerPath(List<String> parts) {
+    def cleanedParts = parts.collect { cleanDockerPath(it) }.findAll { it }
+    if (cleanedParts.size() < 2) {
+        return cleanedParts.join('/')
+    }
+
+    def registryHost = cleanedParts[0]
+    def repositorySubdomain = cleanedParts[1]
+    def imagePathParts = cleanedParts.drop(2)
+    return (["${repositorySubdomain}.${registryHost}"] + imagePathParts).join('/')
 }
 
 def requireParam(String name) {
@@ -360,8 +369,8 @@ def validateDockerBuildArgs(String value) {
         if (!(key ==~ /[A-Za-z_][A-Za-z0-9_]*/)) {
             error("DOCKER_BUILD_ARGS line ${index + 1} has an invalid build arg name: ${key}.")
         }
-        if (key == 'VERSION') {
-            error('DOCKER_BUILD_ARGS must not define VERSION because VERSION is injected automatically from the Jenkins parameter.')
+        if (key == 'imageVersion' || key == 'IMAGE_VERSION') {
+            error('DOCKER_BUILD_ARGS must not define imageVersion because imageVersion is injected automatically from the Jenkins IMAGE_VERSION parameter.')
         }
     }
 }

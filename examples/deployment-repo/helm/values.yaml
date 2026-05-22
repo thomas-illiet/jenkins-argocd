@@ -1,7 +1,7 @@
 apps:
   myService:
     image:
-      repository: artifactory-dev.example.com/docker-dev-local/my-service
+      repository: docker-dev-local.artifactory-dev.example.com/my-service
       tag: 1.2.3-20260522143015
     replicas: 1
     resources:

@@ -1,5 +1,7 @@
 Runs the application pipeline that builds a Docker image, pushes it to the dev Artifactory Docker repository, and updates the ArgoCD deployment repository on the dev branch.
 
+Artifactory Docker repositories are addressed as subdomains: ARTIFACTORY_DEV_REPOSITORY.ARTIFACTORY_DEV_REGISTRY/image-name.
+
 Example:
 
 @Library('ci-shared-library') _
@@ -7,9 +9,9 @@ dockerBuildAndDeployToDev()
 
 The pipeline supports Docker BuildKit secrets through DOCKER_BUILD_SECRETS and optional Jenkins secret text credentials through DOCKER_SECRET_TEXT_CREDENTIALS.
 
-Non-secret Docker build arguments can be passed with DOCKER_BUILD_ARGS, one per line, and are forwarded as --build-arg entries. VERSION is reserved and injected automatically.
+Non-secret Docker build arguments can be passed with DOCKER_BUILD_ARGS, one per line, and are forwarded as --build-arg entries. imageVersion is reserved and injected automatically.
 
-VERSION is forwarded to docker build as --build-arg VERSION=<VERSION>. The pushed image tag is computed as VERSION-yyyyMMddHHmmss from currentBuild.startTimeInMillis, and that computed tag is written to the deployment values file.
+IMAGE_VERSION is forwarded to docker build as --build-arg imageVersion=<IMAGE_VERSION>. The pushed image tag is computed as IMAGE_VERSION-yyyyMMddHHmmss from currentBuild.startTimeInMillis, and that computed tag is written to the deployment values file.
 
 Before building, the pipeline checks whether the target dev image already exists and fails cleanly if the registry cannot accept an overwrite.
 

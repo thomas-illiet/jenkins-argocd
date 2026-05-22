@@ -1,14 +1,14 @@
 def call(Map config = [:]) {
     def cfg = [
-        artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-        artifactoryDevRepositoryDefault: 'docker-dev-local',
-        artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
-        artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
-        artifactoryProdRepositoryDefault: 'docker-prod-local',
-        artifactoryProdCredentialsIdDefault: 'artifactory-prod-docker',
-        valuesPathDefault: 'values.yaml',
-        imageRepositoryYqPathDefault: '.image.repository',
-        imageTagYqPathDefault: '.image.tag'
+        artifactoryDevRegistry: 'artifactory-dev.example.com',
+        artifactoryDevRepository: 'docker-dev-local',
+        artifactoryDevCredentialsId: 'artifactory-dev-docker',
+        artifactoryProdRegistry: 'artifactory-prod.example.com',
+        artifactoryProdRepository: 'docker-prod-local',
+        artifactoryProdCredentialsId: 'artifactory-prod-docker',
+        valuesPath: 'values.yaml',
+        imageRepositoryYqPath: '.image.repository',
+        imageTagYqPath: '.image.tag'
     ] + config
 
     pipeline {
@@ -20,16 +20,16 @@ def call(Map config = [:]) {
         }
 
         parameters {
-            string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistryDefault}", description: 'Dev Docker registry host, without protocol.')
-            string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepositoryDefault}", description: 'Dev Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsIdDefault}", description: 'Jenkins username/password credentials for dev Artifactory.')
-            string(name: 'ARTIFACTORY_PROD_REGISTRY', defaultValue: "${cfg.artifactoryProdRegistryDefault}", description: 'Production Docker registry host, without protocol.')
-            string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepositoryDefault}", description: 'Production Artifactory Docker repository.')
-            string(name: 'ARTIFACTORY_PROD_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryProdCredentialsIdDefault}", description: 'Jenkins username/password credentials for prod Artifactory.')
+            string(name: 'ARTIFACTORY_DEV_REGISTRY', defaultValue: "${cfg.artifactoryDevRegistry}", description: 'Dev Docker registry host, without protocol.')
+            string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepository}", description: 'Dev Artifactory Docker repository.')
+            string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsId}", description: 'Jenkins username/password credentials for dev Artifactory.')
+            string(name: 'ARTIFACTORY_PROD_REGISTRY', defaultValue: "${cfg.artifactoryProdRegistry}", description: 'Production Docker registry host, without protocol.')
+            string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepository}", description: 'Production Artifactory Docker repository.')
+            string(name: 'ARTIFACTORY_PROD_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryProdCredentialsId}", description: 'Jenkins username/password credentials for prod Artifactory.')
 
-            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file in the checked-out deployment repository, for example helm/values.yaml.')
-            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field in the values file.')
-            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field in the values file.')
+            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPath}", description: 'Relative path to the values file in the checked-out deployment repository, for example helm/values.yaml.')
+            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPath}", description: 'yq path to the image repository field in the values file.')
+            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPath}", description: 'yq path to the image tag field in the values file.')
         }
 
         stages {
@@ -50,13 +50,16 @@ def call(Map config = [:]) {
 
                         env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
                         env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
-                        env.ARTIFACTORY_DEV_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_DEV_REGISTRY)
-                        env.ARTIFACTORY_PROD_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_PROD_REGISTRY)
-                        env.DEV_IMAGE_PREFIX = joinDockerPath([
+                        env.ARTIFACTORY_DEV_REGISTRY_CLEAN = joinArtifactoryDockerPath([
                             params.ARTIFACTORY_DEV_REGISTRY,
                             params.ARTIFACTORY_DEV_REPOSITORY
                         ])
-                        env.PROD_IMAGE_PREFIX = joinDockerPath([
+                        env.ARTIFACTORY_PROD_REGISTRY_CLEAN = joinArtifactoryDockerPath([
+                            params.ARTIFACTORY_PROD_REGISTRY,
+                            params.ARTIFACTORY_PROD_REPOSITORY
+                        ])
+                        env.DEV_IMAGE_PREFIX = env.ARTIFACTORY_DEV_REGISTRY_CLEAN
+                        env.PROD_IMAGE_PREFIX = joinArtifactoryDockerPath([
                             params.ARTIFACTORY_PROD_REGISTRY,
                             params.ARTIFACTORY_PROD_REPOSITORY
                         ])
@@ -163,10 +166,16 @@ def cleanDockerPath(String value) {
         .replaceAll(/\/+$/, '')
 }
 
-def joinDockerPath(List<String> parts) {
-    return parts.collect { cleanDockerPath(it) }
-        .findAll { it }
-        .join('/')
+def joinArtifactoryDockerPath(List<String> parts) {
+    def cleanedParts = parts.collect { cleanDockerPath(it) }.findAll { it }
+    if (cleanedParts.size() < 2) {
+        return cleanedParts.join('/')
+    }
+
+    def registryHost = cleanedParts[0]
+    def repositorySubdomain = cleanedParts[1]
+    def imagePathParts = cleanedParts.drop(2)
+    return (["${repositorySubdomain}.${registryHost}"] + imagePathParts).join('/')
 }
 
 def requireParam(String name) {

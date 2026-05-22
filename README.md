@@ -101,7 +101,7 @@ See [examples/README.md](examples/README.md) for copyable Jenkinsfiles and a non
 
 ```mermaid
 flowchart TD
-    A["Application repo: build with VERSION"] --> B["dockerBuildAndDeployToDev"]
+    A["Application repo: build with IMAGE_VERSION"] --> B["dockerBuildAndDeployToDev"]
 
     subgraph APP["Application Pipeline"]
         B --> C["Validate parameters and tools"]
@@ -109,7 +109,7 @@ flowchart TD
         D --> E{"Dev image already exists?"}
         E -->|Yes| F["Stop: overwrite refused"]
         E -->|No| G["docker build with optional BuildKit secrets"]
-        G --> H["docker push image:VERSION-timestamp to dev"]
+        G --> H["docker push image:IMAGE_VERSION-timestamp to dev"]
         H --> I["Prepare SSH known_hosts and core.sshCommand"]
         I --> J["Clone deployment repo on configured branch"]
         J --> K["Update configured values.yaml"]
@@ -141,7 +141,7 @@ By default, the library updates and reads:
 
 ```yaml
 image:
-  repository: artifactory-dev.example.com/docker-dev-local/my-service
+  repository: docker-dev-local.artifactory-dev.example.com/my-service
   tag: 1.2.3-20260522143015
 ```
 
@@ -159,7 +159,7 @@ Nested values example:
 apps:
   myService:
     image:
-      repository: artifactory-dev.example.com/docker-dev-local/my-service
+      repository: docker-dev-local.artifactory-dev.example.com/my-service
       tag: 1.2.3-20260522143015
 ```
 
@@ -177,17 +177,17 @@ For keys containing hyphens, quote the key in the yq path:
 IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
-Dev and prod use the same values structure. Promotion reads the dev image reference from `VALUES_PATH`, replaces the dev Artifactory prefix with the prod Artifactory prefix, and only uploads the Docker image to the prod registry.
+Dev and prod use the same values structure. Artifactory Docker repositories are exposed as subdomains, so `ARTIFACTORY_DEV_REGISTRY=artifactory-dev.example.com` and `ARTIFACTORY_DEV_REPOSITORY=docker-dev-local` produce `docker-dev-local.artifactory-dev.example.com/my-service`. Promotion reads the dev image reference from `VALUES_PATH`, replaces the dev Artifactory subdomain prefix with the prod Artifactory subdomain prefix, and only uploads the Docker image to the prod registry.
 
 ## Application Pipeline
 
 `dockerBuildAndDeployToDev(Map config = [:])`:
 
 - validates required parameters;
-- computes the immutable image tag as `VERSION-yyyyMMddHHmmss` from the Jenkins build start time;
+- computes the immutable image tag as `IMAGE_VERSION-yyyyMMddHHmmss` from the Jenkins build start time;
 - checks whether the dev image tag already exists before building;
 - builds the Docker image;
-- forwards the original `VERSION` parameter to Docker as `--build-arg VERSION=<VERSION>`;
+- forwards the `IMAGE_VERSION` parameter to Docker as `--build-arg imageVersion=<IMAGE_VERSION>`;
 - supports optional non-secret Docker `--build-arg` entries;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
@@ -203,17 +203,17 @@ Example Jenkinsfile:
 @Library('ci-shared-library') _
 
 dockerBuildAndDeployToDev(
-    imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'ssh://git@git.example.com:7999/platform/deployment.git',
-    deploymentBranchDefault: 'devel',
-    valuesPathDefault: 'helm/values.yaml',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    gitCredentialsIdDefault: 'deployment-git-ssh',
-    deploymentGitSshHostDefault: 'git.example.com',
-    deploymentGitSshPortDefault: '7999'
+    imageName: 'my-service',
+    deploymentRepoUrl: 'ssh://git@git.example.com:7999/platform/deployment.git',
+    deploymentBranch: 'devel',
+    valuesPath: 'helm/values.yaml',
+    imageRepositoryYqPath: '.apps.myService.image.repository',
+    imageTagYqPath: '.apps.myService.image.tag',
+    artifactoryDevRegistry: 'artifactory-dev.example.com',
+    artifactoryDevRepository: 'docker-dev-local',
+    gitCredentialsId: 'deployment-git-ssh',
+    deploymentGitSshHost: 'git.example.com',
+    deploymentGitSshPort: '7999'
 )
 ```
 
@@ -221,15 +221,15 @@ Main parameters:
 
 | Parameter | Description |
 | --- | --- |
-| `VERSION` | Required application version. It is forwarded to Docker as `--build-arg VERSION=<VERSION>` and used as the prefix for the immutable image tag. |
+| `IMAGE_VERSION` | Required image version. It is forwarded to Docker as `--build-arg imageVersion=<IMAGE_VERSION>` and used as the prefix for the immutable image tag. |
 | `IMAGE_NAME` | Docker image name, for example `my-service`. |
 | `DOCKERFILE_PATH` | Dockerfile path. Default: `Dockerfile`. |
 | `DOCKER_BUILD_CONTEXT` | Docker build context. Default: `.`. |
-| `DOCKER_BUILD_ARGS` | Optional non-secret Docker `--build-arg` entries, one per line. `VERSION` is reserved and injected automatically. |
+| `DOCKER_BUILD_ARGS` | Optional non-secret Docker `--build-arg` entries, one per line. `imageVersion` is reserved and injected automatically. |
 | `DOCKER_BUILD_SECRETS` | Optional Docker BuildKit `--secret` entries, one per line. |
 | `DOCKER_SECRET_TEXT_CREDENTIALS` | Optional Jenkins secret text mappings, one per line. |
-| `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
-| `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
+| `ARTIFACTORY_DEV_REGISTRY` | Dev Artifactory base host, without protocol. |
+| `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository subdomain. |
 | `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `DEPLOYMENT_REPO_URL` | SSH URL of the ArgoCD deployment repository, for example `ssh://git@git.example.com:7999/platform/deployment.git`. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
@@ -272,10 +272,10 @@ The shared library turns each non-empty, non-comment line into a Docker build ar
 docker build --build-arg NODE_ENV=production --build-arg PUBLIC_PATH=/my-service --build-arg ENABLE_METRICS=true ...
 ```
 
-`VERSION` is reserved. The pipeline always injects it from the Jenkins `VERSION` parameter:
+`imageVersion` is reserved. The pipeline always injects it from the Jenkins `IMAGE_VERSION` parameter:
 
 ```sh
---build-arg VERSION="$VERSION"
+--build-arg imageVersion="$IMAGE_VERSION"
 ```
 
 Use `DOCKER_BUILD_SECRETS` instead when a value is sensitive.
@@ -302,7 +302,7 @@ id=npm_token,env=NPM_TOKEN
 The shared library runs:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build --build-arg NODE_ENV=production --build-arg VERSION="$VERSION" --secret id=npm_token,env=NPM_TOKEN ...
+DOCKER_BUILDKIT=1 docker build --build-arg NODE_ENV=production --build-arg imageVersion="$IMAGE_VERSION" --secret id=npm_token,env=NPM_TOKEN ...
 ```
 
 Dockerfile example:
@@ -334,13 +334,13 @@ Example Jenkinsfile:
 @Library('ci-shared-library') _
 
 dockerPromoteToProd(
-    valuesPathDefault: 'helm/values.yaml',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
-    artifactoryProdRepositoryDefault: 'docker-prod-local'
+    valuesPath: 'helm/values.yaml',
+    imageRepositoryYqPath: '.apps.myService.image.repository',
+    imageTagYqPath: '.apps.myService.image.tag',
+    artifactoryDevRegistry: 'artifactory-dev.example.com',
+    artifactoryDevRepository: 'docker-dev-local',
+    artifactoryProdRegistry: 'artifactory-prod.example.com',
+    artifactoryProdRepository: 'docker-prod-local'
 )
 ```
 
@@ -348,11 +348,11 @@ Main parameters:
 
 | Parameter | Description |
 | --- | --- |
-| `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host. |
-| `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
+| `ARTIFACTORY_DEV_REGISTRY` | Dev Artifactory base host. |
+| `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository subdomain. |
 | `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
-| `ARTIFACTORY_PROD_REGISTRY` | Prod Docker registry host. |
-| `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository. |
+| `ARTIFACTORY_PROD_REGISTRY` | Prod Artifactory base host. |
+| `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository subdomain. |
 | `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository. |
@@ -381,10 +381,10 @@ The promotion copies the image to prod Artifactory. It does not delete the image
 
 Application pipeline:
 
-- run a build with `VERSION=1.2.3-test` and `IMAGE_NAME=my-service`;
+- run a build with `IMAGE_VERSION=1.2.3-test` and `IMAGE_NAME=my-service`;
 - check that the image exists in dev Artifactory;
 - check that `VALUES_PATH` contains the expected repository and a tag like `1.2.3-test-yyyyMMddHHmmss`;
-- rerun the same version and verify a new timestamped tag is generated;
+- rerun the same image version and verify a new timestamped tag is generated;
 - verify the image existence check still refuses an exact tag collision.
 
 Promotion pipeline:
