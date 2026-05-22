@@ -1,0 +1,8 @@
+Runs the application pipeline that builds a Docker image, pushes it to the dev Artifactory Docker repository, and updates the ArgoCD deployment repository on the dev branch.
+
+Example:
+
+@Library('ci-shared-library') _
+dockerBuildAndDeployToDev()
+
+The pipeline supports Docker BuildKit secrets through DOCKER_BUILD_SECRETS and optional Jenkins secret text credentials through DOCKER_SECRET_TEXT_CREDENTIALS.

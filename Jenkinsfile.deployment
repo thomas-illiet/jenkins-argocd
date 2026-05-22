@@ -1,0 +1,3 @@
+@Library('ci-shared-library') _
+
+dockerPromoteToProd()

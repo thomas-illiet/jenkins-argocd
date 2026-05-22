@@ -1,0 +1,6 @@
+Runs the deployment pipeline that validates an approved Bitbucket Data Center pull request from devel to main, promotes the Docker image from dev Artifactory to prod Artifactory, and updates production Helm values.
+
+Example:
+
+@Library('ci-shared-library') _
+dockerPromoteToProd()
