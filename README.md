@@ -4,9 +4,11 @@ This repository provides a Jenkins Shared Library for a simple GitOps delivery f
 
 1. Build a Docker image from an application repository.
 2. Push the image to the dev Artifactory Docker repository.
-3. Update one deployment values file, usually `values.yaml`, on the `devel` branch.
-4. When a Bitbucket Data Center PR from `devel` to `main` is approved, promote only the Docker image from dev Artifactory to prod Artifactory.
-5. Do not update Git during promotion. The PR merge carries the already-updated `values.yaml`.
+3. Update one deployment values file, usually `values.yaml`, on the configured deployment branch.
+4. Promote the Docker image referenced by that values file from dev Artifactory to prod Artifactory.
+5. Keep promotion independent from the Git platform. The promotion pipeline does not call Git provider APIs and does not update Git.
+
+Artifactory repositories are treated as immutable. Before pushing an image, the pipelines check whether the target image already exists and fail cleanly when it does.
 
 ## Repository Layout
 
@@ -39,8 +41,14 @@ Repository URL: https://github.com/thomas-illiet/jenkins-argocd.git
 ```
 
 4. Save the Jenkins configuration.
-5. Make sure Jenkins agents have `docker`, `git`, `curl`, `jq`, and `yq v4`.
-6. Create the credentials described below.
+5. Make sure Jenkins agents have the required tools:
+
+```text
+Application pipeline: docker, git, yq v4
+Promotion pipeline: docker, yq v4
+```
+
+6. Create the Jenkins credentials described below.
 
 The library name can be different, but Jenkinsfiles must use the same name in `@Library('...')`.
 
@@ -52,7 +60,7 @@ The pipelines expect Jenkins `username/password` credentials:
 | --- | --- |
 | `ARTIFACTORY_DEV_CREDENTIALS_ID` | Docker login to the dev Artifactory repository. |
 | `ARTIFACTORY_PROD_CREDENTIALS_ID` | Docker login to the prod Artifactory repository. |
-| `BITBUCKET_CREDENTIALS_ID` | Git clone/push and Bitbucket Data Center API calls. |
+| `GIT_CREDENTIALS_ID` | Deployment Git clone and push used by the application pipeline. |
 
 The application pipeline can also inject Jenkins `Secret text` credentials into Docker BuildKit secrets.
 
@@ -95,31 +103,33 @@ flowchart TD
 
     subgraph APP["Application Pipeline"]
         B --> C["Validate parameters and tools"]
-        C --> D["docker build with optional BuildKit secrets"]
-        D --> E["docker login to dev Artifactory"]
-        E --> F["docker push image:VERSION to dev"]
-        F --> G["Clone deployment repo on devel"]
-        G --> H["Update configured values.yaml"]
-        H --> I["Commit and push to devel if changed"]
+        C --> D["docker login to dev Artifactory"]
+        D --> E{"Dev image already exists?"}
+        E -->|Yes| F["Stop: overwrite refused"]
+        E -->|No| G["docker build with optional BuildKit secrets"]
+        G --> H["docker push image:VERSION to dev"]
+        H --> I["Clone deployment repo on configured branch"]
+        I --> J["Update configured values.yaml"]
+        J --> K["Commit and push if changed"]
     end
 
-    I --> J["PR deployment: devel to main"]
-    J --> K["dockerPromoteToProd"]
+    K --> L["Deployment repo pipeline trigger"]
+    L --> M["dockerPromoteToProd"]
 
     subgraph PROMOTE["Promotion Pipeline"]
-        K --> L["Validate PR source=devel target=main"]
-        L --> M["Check Bitbucket approval"]
-        M --> N{"At least 1 approval?"}
-        N -->|No| O["Stop: promotion refused"]
-        N -->|Yes| P["Read image from values.yaml"]
-        P --> Q["docker login dev + prod"]
-        Q --> R["docker pull dev image"]
-        R --> S["docker tag prod image"]
-        S --> T["docker push prod image"]
+        M --> N["Validate parameters and tools"]
+        N --> O["Read image repository and tag from values.yaml"]
+        O --> P["Calculate prod image name"]
+        P --> Q["docker login to prod Artifactory"]
+        Q --> R{"Prod image already exists?"}
+        R -->|Yes| S["Stop: overwrite refused"]
+        R -->|No| T["docker login to dev Artifactory"]
+        T --> U["docker pull dev image"]
+        U --> V["docker tag prod image"]
+        V --> W["docker push prod image"]
     end
 
-    T --> U["Merge PR to main"]
-    U --> V["ArgoCD deploys from main"]
+    W --> X["ArgoCD can deploy from the promoted branch or release process"]
 ```
 
 ## Values File Convention
@@ -164,15 +174,18 @@ For keys containing hyphens, quote the key in the yq path:
 IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
+Dev and prod use the same values structure. Promotion reads the dev image reference from `VALUES_PATH`, replaces the dev Artifactory prefix with the prod Artifactory prefix, and only uploads the Docker image to the prod registry.
+
 ## Application Pipeline
 
 `dockerBuildAndDeployToDev(Map config = [:])`:
 
 - validates required parameters;
+- checks whether the dev image tag already exists before building;
 - builds the Docker image;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
-- clones the deployment repository on `devel`;
+- clones the deployment repository on the configured branch;
 - updates `VALUES_PATH`;
 - commits and pushes only when the values file changes.
 
@@ -183,13 +196,14 @@ Example Jenkinsfile:
 
 dockerBuildAndDeployToDev(
     imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
+    deploymentRepoUrlDefault: 'https://git.example.com/platform/deployment.git',
     deploymentBranchDefault: 'devel',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local'
+    artifactoryDevRepositoryDefault: 'docker-dev-local',
+    gitCredentialsIdDefault: 'deployment-git'
 )
 ```
 
@@ -205,11 +219,13 @@ Main parameters:
 | `DOCKER_SECRET_TEXT_CREDENTIALS` | Optional Jenkins secret text mappings, one per line. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
+| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `DEPLOYMENT_REPO_URL` | HTTPS URL of the ArgoCD deployment repository. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. |
 | `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. |
+| `GIT_CREDENTIALS_ID` | Jenkins credentials for deployment Git clone and push. |
 
 ## Docker BuildKit Secrets
 
@@ -250,11 +266,13 @@ RUN --mount=type=secret,id=npm_token \
 
 `dockerPromoteToProd(Map config = [:])`:
 
-- validates that the PR source branch is `devel`;
-- validates that the PR target branch is `main`;
-- checks Bitbucket Data Center for at least one approval;
+- runs against the deployment repository workspace already checked out by Jenkins;
 - reads image repository and tag from `VALUES_PATH`;
+- calculates the prod image by replacing the dev Artifactory prefix with the prod Artifactory prefix;
+- logs in to prod Artifactory and checks whether the target image already exists;
+- fails before push if the prod image already exists;
 - promotes the image with `docker pull`, `docker tag`, and `docker push`;
+- does not call any Git platform API;
 - does not modify or push any Git file.
 
 Example Jenkinsfile:
@@ -263,9 +281,6 @@ Example Jenkinsfile:
 @Library('ci-shared-library') _
 
 dockerPromoteToProd(
-    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
-    bitbucketProjectKeyDefault: 'PLATFORM',
-    bitbucketRepoSlugDefault: 'deployment',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
@@ -280,18 +295,12 @@ Main parameters:
 
 | Parameter | Description |
 | --- | --- |
-| `SOURCE_BRANCH` | Allowed PR source branch. Default: `devel`. |
-| `TARGET_BRANCH` | Allowed PR target branch. Default: `main`. |
-| `BITBUCKET_BASE_URL` | Bitbucket Data Center base URL. |
-| `BITBUCKET_PROJECT_KEY` | Bitbucket project key. |
-| `BITBUCKET_REPO_SLUG` | Bitbucket repository slug. |
-| `BITBUCKET_PR_ID` | Optional PR id. If empty, Jenkins uses `CHANGE_ID`. |
-| `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Bitbucket API and Git clone. |
-| `DEPLOYMENT_REPO_URL` | Optional HTTPS repo URL. If empty, current `origin` is used. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
+| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `ARTIFACTORY_PROD_REGISTRY` | Prod Docker registry host. |
 | `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository. |
+| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository. |
 | `IMAGE_TAG_YQ_PATH` | yq path used to read the image tag. |
@@ -300,11 +309,18 @@ Main parameters:
 
 The production promotion is refused when:
 
-- the PR source branch is not `devel`;
-- the PR target branch is not `main`;
-- the PR has no approval in Bitbucket Data Center;
+- `VALUES_PATH` does not exist in the checked-out workspace;
 - `VALUES_PATH` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
-- the image repository does not start with the expected dev Artifactory prefix.
+- the image repository does not start with the expected dev Artifactory prefix;
+- the prod image already exists.
+
+Image existence checks use:
+
+```sh
+docker manifest inspect "$IMAGE"
+```
+
+This prevents accidental overwrite attempts when Artifactory repositories are immutable.
 
 The promotion copies the image to prod Artifactory. It does not delete the image from dev Artifactory and it does not update `values.yaml`.
 
@@ -315,10 +331,10 @@ Application pipeline:
 - run a build with `VERSION=1.2.3-test` and `IMAGE_NAME=my-service`;
 - check that the image exists in dev Artifactory;
 - check that `VALUES_PATH` contains the expected repository and tag;
-- rerun the same version and check that no useless Git commit is created.
+- rerun the same version and verify the pipeline fails before building or pushing the existing dev image.
 
 Promotion pipeline:
 
-- create a PR from `devel` to `main` without approval and verify promotion is refused;
-- approve the PR and verify the image is copied from dev Artifactory to prod Artifactory;
+- run promotion with a tag that does not exist in prod and verify the image is copied from dev Artifactory to prod Artifactory;
+- rerun promotion with the same tag and verify the pipeline fails before `docker push`;
 - verify no file is committed by the promotion pipeline.

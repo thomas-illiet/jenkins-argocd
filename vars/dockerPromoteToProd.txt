@@ -1,4 +1,4 @@
-Runs the deployment pipeline that validates an approved Bitbucket Data Center pull request from devel to main and promotes the Docker image from dev Artifactory to prod Artifactory without modifying Git.
+Runs the deployment pipeline that promotes the Docker image referenced by the checked-out values file from dev Artifactory to prod Artifactory without modifying Git.
 
 Example:
 
@@ -6,3 +6,5 @@ Example:
 dockerPromoteToProd()
 
 The values file can live outside the repository root. Configure its relative path with VALUES_PATH and configure the image fields with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.
+
+Before pushing to prod, the pipeline checks whether the target image already exists with docker manifest inspect and fails cleanly if the registry cannot accept an overwrite.

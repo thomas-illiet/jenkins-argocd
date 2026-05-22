@@ -2,7 +2,7 @@
 
 dockerBuildAndDeployToDev(
     imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
+    deploymentRepoUrlDefault: 'https://git.example.com/platform/deployment.git',
     deploymentBranchDefault: 'devel',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
@@ -10,7 +10,7 @@ dockerBuildAndDeployToDev(
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
     artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
-    bitbucketCredentialsIdDefault: 'bitbucket-git',
+    gitCredentialsIdDefault: 'deployment-git',
     gitAuthorNameDefault: 'jenkins',
     gitAuthorEmailDefault: 'jenkins@example.com'
 )

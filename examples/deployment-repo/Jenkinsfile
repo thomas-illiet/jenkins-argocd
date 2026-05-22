@@ -1,12 +1,6 @@
 @Library('ci-shared-library') _
 
 dockerPromoteToProd(
-    sourceBranchDefault: 'devel',
-    targetBranchDefault: 'main',
-    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
-    bitbucketProjectKeyDefault: 'PLATFORM',
-    bitbucketRepoSlugDefault: 'deployment',
-    bitbucketCredentialsIdDefault: 'bitbucket-git',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',

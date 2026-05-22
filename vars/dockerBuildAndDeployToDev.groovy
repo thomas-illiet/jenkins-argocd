@@ -14,7 +14,7 @@ def call(Map config = [:]) {
         valuesPathDefault: 'values.yaml',
         imageRepositoryYqPathDefault: '.image.repository',
         imageTagYqPathDefault: '.image.tag',
-        bitbucketCredentialsIdDefault: 'bitbucket-git',
+        gitCredentialsIdDefault: 'deployment-git',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
     ] + config
@@ -44,7 +44,7 @@ def call(Map config = [:]) {
             string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file inside the deployment repository, for example helm/values.yaml.')
             string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
-            string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: "${cfg.bitbucketCredentialsIdDefault}", description: 'Jenkins username/password credentials for Bitbucket Git push.')
+            string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsIdDefault}", description: 'Jenkins username/password credentials for deployment Git clone and push.')
 
             string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for deployment commits.')
             string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for deployment commits.')
@@ -71,7 +71,7 @@ def call(Map config = [:]) {
                             'VALUES_PATH',
                             'IMAGE_REPOSITORY_YQ_PATH',
                             'IMAGE_TAG_YQ_PATH',
-                            'BITBUCKET_CREDENTIALS_ID'
+                            'GIT_CREDENTIALS_ID'
                         ].each { requireParam(it) }
 
                         validateDockerBuildSecrets(params.DOCKER_BUILD_SECRETS)
@@ -99,6 +99,30 @@ def call(Map config = [:]) {
                         yq --version | grep -q 'version v4'
                         test -f "$DOCKERFILE_PATH"
                     '''
+                }
+            }
+
+            stage('Check dev image does not exist') {
+                steps {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: params.ARTIFACTORY_DEV_CREDENTIALS_ID,
+                            usernameVariable: 'ARTIFACTORY_DEV_USERNAME',
+                            passwordVariable: 'ARTIFACTORY_DEV_PASSWORD'
+                        )
+                    ]) {
+                        sh '''
+                            set -eu
+                            printf '%s' "$ARTIFACTORY_DEV_PASSWORD" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                                --username "$ARTIFACTORY_DEV_USERNAME" \
+                                --password-stdin
+
+                            if docker manifest inspect "$DEV_IMAGE" >/dev/null 2>&1; then
+                                echo "Image already exists in dev Artifactory and cannot be overwritten: $DEV_IMAGE" >&2
+                                exit 1
+                            fi
+                        '''
+                    }
                 }
             }
 
@@ -162,7 +186,7 @@ def call(Map config = [:]) {
                 steps {
                     withCredentials([
                         usernamePassword(
-                            credentialsId: params.BITBUCKET_CREDENTIALS_ID,
+                            credentialsId: params.GIT_CREDENTIALS_ID,
                             usernameVariable: 'GIT_USERNAME',
                             passwordVariable: 'GIT_PASSWORD'
                         )

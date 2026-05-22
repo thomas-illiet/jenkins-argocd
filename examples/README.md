@@ -51,5 +51,6 @@ imageTagYqPathDefault: '.apps.myService.image.tag'
 1. Copy `examples/application-repo/Jenkinsfile` into an application repository.
 2. Copy `examples/deployment-repo/Jenkinsfile` into the ArgoCD deployment repository.
 3. Keep or adapt the `helm/values.yaml` layout.
-4. Replace placeholder registry, Bitbucket, and credential values with your real Jenkins setup.
-5. Run the application build with a `VERSION`, then open a Bitbucket PR from `devel` to `main` in the deployment repository.
+4. Replace placeholder registry, Git, and credential values with your real Jenkins setup.
+5. Run the application build with a `VERSION`.
+6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion only uploads the referenced image to prod Artifactory and fails if that image already exists there.
