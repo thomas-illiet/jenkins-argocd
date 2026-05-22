@@ -7,8 +7,7 @@ dockerPromoteToProd(
     bitbucketProjectKeyDefault: 'PLATFORM',
     bitbucketRepoSlugDefault: 'deployment',
     bitbucketCredentialsIdDefault: 'bitbucket-git',
-    valuesDevPathDefault: 'helm/values-dev.yaml',
-    valuesProdPathDefault: 'helm/values-prod.yaml',
+    valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
@@ -16,7 +15,5 @@ dockerPromoteToProd(
     artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
     artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
     artifactoryProdRepositoryDefault: 'docker-prod-local',
-    artifactoryProdCredentialsIdDefault: 'artifactory-prod-docker',
-    gitAuthorNameDefault: 'jenkins',
-    gitAuthorEmailDefault: 'jenkins@example.com'
+    artifactoryProdCredentialsIdDefault: 'artifactory-prod-docker'
 )

@@ -11,9 +11,9 @@ def call(Map config = [:]) {
         artifactoryDevCredentialsIdDefault: 'artifactory-dev-docker',
         deploymentRepoUrlDefault: '',
         deploymentBranchDefault: 'devel',
-        valuesDevPathDefault: 'values-dev.yaml',
-        imageRepositoryYqPathDefault: config.devImageRepositoryYqPathDefault ?: '.image.repository',
-        imageTagYqPathDefault: config.devImageTagYqPathDefault ?: '.image.tag',
+        valuesPathDefault: 'values.yaml',
+        imageRepositoryYqPathDefault: '.image.repository',
+        imageTagYqPathDefault: '.image.tag',
         bitbucketCredentialsIdDefault: 'bitbucket-git',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
@@ -41,7 +41,7 @@ def call(Map config = [:]) {
 
             string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'HTTPS URL of the ArgoCD/deployment Git repository.')
             string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranchDefault}", description: 'Deployment branch to update.')
-            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file inside the deployment repository, for example helm/values-dev.yaml.')
+            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file inside the deployment repository, for example helm/values.yaml.')
             string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
             string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: "${cfg.bitbucketCredentialsIdDefault}", description: 'Jenkins username/password credentials for Bitbucket Git push.')
@@ -68,7 +68,7 @@ def call(Map config = [:]) {
                             'ARTIFACTORY_DEV_CREDENTIALS_ID',
                             'DEPLOYMENT_REPO_URL',
                             'DEPLOYMENT_BRANCH',
-                            'VALUES_DEV_PATH',
+                            'VALUES_PATH',
                             'IMAGE_REPOSITORY_YQ_PATH',
                             'IMAGE_TAG_YQ_PATH',
                             'BITBUCKET_CREDENTIALS_ID'
@@ -158,7 +158,7 @@ def call(Map config = [:]) {
                 }
             }
 
-            stage('Update ArgoCD dev values') {
+            stage('Update ArgoCD values') {
                 steps {
                     withCredentials([
                         usernamePassword(
@@ -189,21 +189,21 @@ EOF
                                 "$DEPLOYMENT_WORKDIR"
 
                             cd "$DEPLOYMENT_WORKDIR"
-                            test -f "$VALUES_DEV_PATH"
+                            test -f "$VALUES_PATH"
 
                             export IMAGE_REPOSITORY_VALUE="$DEV_IMAGE_REPOSITORY"
                             export IMAGE_TAG_VALUE="$IMAGE_TAG"
-                            yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_DEV_PATH"
+                            yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PATH"
 
-                            if git diff --quiet -- "$VALUES_DEV_PATH"; then
-                                echo "No dev values change to commit."
+                            if git diff --quiet -- "$VALUES_PATH"; then
+                                echo "No values change to commit."
                                 exit 0
                             fi
 
                             git config user.name "$GIT_AUTHOR_NAME"
                             git config user.email "$GIT_AUTHOR_EMAIL"
-                            git add "$VALUES_DEV_PATH"
-                            git commit -m "Deploy ${IMAGE_NAME_CLEAN}:${IMAGE_TAG} to dev"
+                            git add "$VALUES_PATH"
+                            git commit -m "Deploy ${IMAGE_NAME_CLEAN}:${IMAGE_TAG}"
                             git push origin "HEAD:${DEPLOYMENT_BRANCH}"
                         '''
                     }

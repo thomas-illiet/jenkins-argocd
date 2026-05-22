@@ -14,12 +14,9 @@ def call(Map config = [:]) {
         artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
         artifactoryProdRepositoryDefault: 'docker-prod-local',
         artifactoryProdCredentialsIdDefault: 'artifactory-prod-docker',
-        valuesDevPathDefault: 'values-dev.yaml',
-        valuesProdPathDefault: 'values-prod.yaml',
-        imageRepositoryYqPathDefault: config.devImageRepositoryYqPathDefault ?: config.prodImageRepositoryYqPathDefault ?: '.image.repository',
-        imageTagYqPathDefault: config.devImageTagYqPathDefault ?: config.prodImageTagYqPathDefault ?: '.image.tag',
-        gitAuthorNameDefault: 'jenkins',
-        gitAuthorEmailDefault: 'jenkins@example.com'
+        valuesPathDefault: 'values.yaml',
+        imageRepositoryYqPathDefault: '.image.repository',
+        imageTagYqPathDefault: '.image.tag'
     ] + config
 
     pipeline {
@@ -47,12 +44,9 @@ def call(Map config = [:]) {
             string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepositoryDefault}", description: 'Production Artifactory Docker repository.')
             string(name: 'ARTIFACTORY_PROD_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryProdCredentialsIdDefault}", description: 'Jenkins username/password credentials for prod Artifactory.')
 
-            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file, for example helm/values-dev.yaml.')
-            string(name: 'VALUES_PROD_PATH', defaultValue: "${cfg.valuesProdPathDefault}", description: 'Relative path to the prod values file, for example helm/values-prod.yaml.')
-            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field used in both dev and prod values.')
-            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field used in both dev and prod values.')
-            string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for promotion commits.')
-            string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for promotion commits.')
+            string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file, for example helm/values.yaml.')
+            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field in the values file.')
+            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field in the values file.')
         }
 
         environment {
@@ -76,8 +70,7 @@ def call(Map config = [:]) {
                             'ARTIFACTORY_PROD_REGISTRY',
                             'ARTIFACTORY_PROD_REPOSITORY',
                             'ARTIFACTORY_PROD_CREDENTIALS_ID',
-                            'VALUES_DEV_PATH',
-                            'VALUES_PROD_PATH',
+                            'VALUES_PATH',
                             'IMAGE_REPOSITORY_YQ_PATH',
                             'IMAGE_TAG_YQ_PATH'
                         ].each { requireParam(it) }
@@ -192,24 +185,24 @@ EOF
                 }
             }
 
-            stage('Read dev image and calculate prod image') {
+            stage('Read image and calculate prod image') {
                 steps {
                     dir("${env.PROMOTION_WORKDIR}") {
                         script {
                             env.DEV_IMAGE_REPOSITORY = sh(
                                 returnStdout: true,
-                                script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
+                                script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_PATH"'
                             ).trim()
                             env.PROMOTED_IMAGE_TAG = sh(
                                 returnStdout: true,
-                                script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
+                                script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_PATH"'
                             ).trim()
 
                             if (!env.DEV_IMAGE_REPOSITORY || env.DEV_IMAGE_REPOSITORY == 'null') {
-                                error("Missing value at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_DEV_PATH}")
+                                error("Missing value at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_PATH}")
                             }
                             if (!env.PROMOTED_IMAGE_TAG || env.PROMOTED_IMAGE_TAG == 'null') {
-                                error("Missing value at ${env.IMAGE_TAG_YQ_PATH} in ${params.VALUES_DEV_PATH}")
+                                error("Missing value at ${env.IMAGE_TAG_YQ_PATH} in ${params.VALUES_PATH}")
                             }
                             if (!env.DEV_IMAGE_REPOSITORY.startsWith("${env.DEV_IMAGE_PREFIX}/")) {
                                 error("Dev image repository '${env.DEV_IMAGE_REPOSITORY}' does not start with expected prefix '${env.DEV_IMAGE_PREFIX}'.")
@@ -250,51 +243,6 @@ EOF
                             docker tag "$DEV_IMAGE" "$PROD_IMAGE"
                             docker push "$PROD_IMAGE"
                         '''
-                    }
-                }
-            }
-
-            stage('Update production values') {
-                steps {
-                    dir("${env.PROMOTION_WORKDIR}") {
-                        withCredentials([
-                            usernamePassword(
-                                credentialsId: params.BITBUCKET_CREDENTIALS_ID,
-                                usernameVariable: 'GIT_USERNAME',
-                                passwordVariable: 'GIT_PASSWORD'
-                            )
-                        ]) {
-                            sh '''
-                                set -eu
-                                test -f "$VALUES_PROD_PATH"
-
-                                export IMAGE_REPOSITORY_VALUE="$PROD_IMAGE_REPOSITORY"
-                                export IMAGE_TAG_VALUE="$PROMOTED_IMAGE_TAG"
-                                yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PROD_PATH"
-
-                                if git diff --quiet -- "$VALUES_PROD_PATH"; then
-                                    echo "No prod values change to commit."
-                                    exit 0
-                                fi
-
-                                cat > "$WORKSPACE/.git-askpass" <<'EOF'
-#!/bin/sh
-case "$1" in
-    *Username*|*username*) printf '%s\n' "$GIT_USERNAME" ;;
-    *) printf '%s\n' "$GIT_PASSWORD" ;;
-esac
-EOF
-                                chmod 700 "$WORKSPACE/.git-askpass"
-                                export GIT_ASKPASS="$WORKSPACE/.git-askpass"
-                                export GIT_TERMINAL_PROMPT=0
-
-                                git config user.name "$GIT_AUTHOR_NAME"
-                                git config user.email "$GIT_AUTHOR_EMAIL"
-                                git add "$VALUES_PROD_PATH"
-                                git commit -m "Promote ${PROMOTED_IMAGE_TAG} to production"
-                                git push origin "HEAD:${SOURCE_BRANCH}"
-                            '''
-                        }
                     }
                 }
             }

@@ -2,7 +2,7 @@
 
 This directory contains copyable examples for the shared library.
 
-## Examples
+## Layout
 
 ```text
 examples
@@ -12,24 +12,21 @@ examples
 `-- deployment-repo
     |-- Jenkinsfile
     `-- helm
-        |-- values-dev.yaml
-        `-- values-prod.yaml
+        `-- values.yaml
 ```
 
-## Non-root values files
+## Non-root values file
 
 The deployment example intentionally stores Helm values under `helm/` instead of the repository root:
 
 ```text
-helm/values-dev.yaml
-helm/values-prod.yaml
+helm/values.yaml
 ```
 
 This is handled by:
 
 ```groovy
-valuesDevPathDefault: 'helm/values-dev.yaml'
-valuesProdPathDefault: 'helm/values-prod.yaml'
+valuesPathDefault: 'helm/values.yaml'
 ```
 
 The image fields are also nested:
@@ -53,6 +50,6 @@ imageTagYqPathDefault: '.apps.myService.image.tag'
 
 1. Copy `examples/application-repo/Jenkinsfile` into an application repository.
 2. Copy `examples/deployment-repo/Jenkinsfile` into the ArgoCD deployment repository.
-3. Keep or adapt the `helm/values-*.yaml` layout.
+3. Keep or adapt the `helm/values.yaml` layout.
 4. Replace placeholder registry, Bitbucket, and credential values with your real Jenkins setup.
 5. Run the application build with a `VERSION`, then open a Bitbucket PR from `devel` to `main` in the deployment repository.

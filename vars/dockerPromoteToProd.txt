@@ -1,8 +1,8 @@
-Runs the deployment pipeline that validates an approved Bitbucket Data Center pull request from devel to main, promotes the Docker image from dev Artifactory to prod Artifactory, and updates production Helm values.
+Runs the deployment pipeline that validates an approved Bitbucket Data Center pull request from devel to main and promotes the Docker image from dev Artifactory to prod Artifactory without modifying Git.
 
 Example:
 
 @Library('ci-shared-library') _
 dockerPromoteToProd()
 
-The dev and prod values files can live outside the repository root. Configure their relative paths with VALUES_DEV_PATH and VALUES_PROD_PATH, and configure the shared image structure with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.
+The values file can live outside the repository root. Configure its relative path with VALUES_PATH and configure the image fields with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.

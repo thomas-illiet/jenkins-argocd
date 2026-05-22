@@ -1,12 +1,12 @@
 # Jenkins Shared Library for Docker, Artifactory, and ArgoCD
 
-This repository provides a Jenkins Shared Library plus two thin Jenkinsfile examples for a Docker delivery flow:
+This repository provides a Jenkins Shared Library for a simple GitOps delivery flow:
 
 1. Build a Docker image from an application repository.
 2. Push the image to the dev Artifactory Docker repository.
-3. Update the ArgoCD deployment repository on the `devel` branch.
-4. Promote the Docker image from dev Artifactory to prod Artifactory when a Bitbucket Data Center PR from `devel` to `main` is approved.
-5. Update production Helm values before the PR is merged into `main`.
+3. Update one deployment values file, usually `values.yaml`, on the `devel` branch.
+4. When a Bitbucket Data Center PR from `devel` to `main` is approved, promote only the Docker image from dev Artifactory to prod Artifactory.
+5. Do not update Git during promotion. The PR merge carries the already-updated `values.yaml`.
 
 ## Repository Layout
 
@@ -26,7 +26,7 @@ This repository provides a Jenkins Shared Library plus two thin Jenkinsfile exam
 
 ## Installation
 
-1. Push this repository to GitHub, Bitbucket, or another Git server reachable by Jenkins.
+1. Push this repository to a Git server reachable by Jenkins.
 2. In Jenkins, go to **Manage Jenkins > System > Global Trusted Pipeline Libraries**.
 3. Add a new library:
 
@@ -39,35 +39,26 @@ Repository URL: https://github.com/thomas-illiet/jenkins-argocd.git
 ```
 
 4. Save the Jenkins configuration.
-5. Make sure the Jenkins agents used by the jobs have the tools listed in [Jenkins Agent Requirements](#jenkins-agent-requirements).
-6. Create the Jenkins credentials listed in [Jenkins Credentials](#jenkins-credentials).
+5. Make sure Jenkins agents have `docker`, `git`, `curl`, `jq`, and `yq v4`.
+6. Create the credentials described below.
 
-The library name can be different, but the Jenkinsfiles must use the same name in `@Library('...')`.
+The library name can be different, but Jenkinsfiles must use the same name in `@Library('...')`.
+
+## Credentials
+
+The pipelines expect Jenkins `username/password` credentials:
+
+| Credential parameter | Purpose |
+| --- | --- |
+| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Docker login to the dev Artifactory repository. |
+| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Docker login to the prod Artifactory repository. |
+| `BITBUCKET_CREDENTIALS_ID` | Git clone/push and Bitbucket Data Center API calls. |
+
+The application pipeline can also inject Jenkins `Secret text` credentials into Docker BuildKit secrets.
 
 ## Usage Overview
 
-Use this repository as the shared library repository. In each application repository, keep only a small Jenkinsfile that calls `dockerBuildAndDeployToDev()`. In the ArgoCD deployment repository, keep only a small Jenkinsfile that calls `dockerPromoteToProd()`.
-
-Typical repository setup:
-
-```text
-application-repo
-`-- Jenkinsfile
-
-deployment-repo
-|-- Jenkinsfile
-`-- helm
-    |-- values-dev.yaml
-    `-- values-prod.yaml
-```
-
-See [examples/README.md](examples/README.md) for copyable Jenkinsfiles and non-root values files.
-
-## Jenkinsfiles
-
-The Jenkinsfiles are intentionally small. They only load the shared library and call a reusable pipeline.
-
-Application repository:
+Application repositories use:
 
 ```groovy
 @Library('ci-shared-library') _
@@ -75,7 +66,7 @@ Application repository:
 dockerBuildAndDeployToDev()
 ```
 
-Deployment repository:
+The deployment repository uses:
 
 ```groovy
 @Library('ci-shared-library') _
@@ -83,7 +74,18 @@ Deployment repository:
 dockerPromoteToProd()
 ```
 
-Replace `ci-shared-library` with the name configured in Jenkins under **Manage Jenkins > System > Global Trusted Pipeline Libraries** or your folder-level shared library configuration.
+Typical deployment repository setup:
+
+```text
+deployment-repo
+|-- Jenkinsfile
+`-- helm
+    `-- values.yaml
+```
+
+The values file does not need to be at the repository root. Configure its relative path with `VALUES_PATH`, for example `helm/values.yaml`, `charts/my-service/values.yaml`, or `environments/dev/values.yaml`.
+
+See [examples/README.md](examples/README.md) for copyable Jenkinsfiles and a non-root `helm/values.yaml` example.
 
 ## Execution Flow
 
@@ -97,107 +99,61 @@ flowchart TD
         D --> E["docker login to dev Artifactory"]
         E --> F["docker push image:VERSION to dev"]
         F --> G["Clone deployment repo on devel"]
-        G --> H["Update values-dev.yaml"]
+        G --> H["Update configured values.yaml"]
         H --> I["Commit and push to devel if changed"]
     end
 
-    I --> J["ArgoCD detects values-dev.yaml"]
-    J --> K["Deploy to dev"]
+    I --> J["PR deployment: devel to main"]
+    J --> K["dockerPromoteToProd"]
 
-    I --> L["Deployment PR: devel to main"]
-    L --> M["dockerPromoteToProd"]
-
-    subgraph DEPLOY["Deployment / Promotion Pipeline"]
-        M --> N["Validate PR source=devel target=main"]
-        N --> O["Call Bitbucket Data Center API"]
-        O --> P{"At least 1 approval?"}
-        P -->|No| Q["Stop: promotion refused"]
-        P -->|Yes| R["Read values-dev.yaml"]
-        R --> S["Compute dev image and prod image"]
-        S --> T["docker login to dev and prod"]
-        T --> U["docker pull dev image"]
-        U --> V["docker tag prod image"]
-        V --> W["docker push prod image"]
-        W --> X["Update values-prod.yaml"]
-        X --> Y["Commit and push to devel if changed"]
+    subgraph PROMOTE["Promotion Pipeline"]
+        K --> L["Validate PR source=devel target=main"]
+        L --> M["Check Bitbucket approval"]
+        M --> N{"At least 1 approval?"}
+        N -->|No| O["Stop: promotion refused"]
+        N -->|Yes| P["Read image from values.yaml"]
+        P --> Q["docker login dev + prod"]
+        Q --> R["docker pull dev image"]
+        R --> S["docker tag prod image"]
+        S --> T["docker push prod image"]
     end
 
-    Y --> Z["PR contains production values"]
-    Z --> AA["Merge PR to main"]
-    AA --> AB["ArgoCD prod detects main"]
-    AB --> AC["Deploy to prod"]
+    T --> U["Merge PR to main"]
+    U --> V["ArgoCD deploys from main"]
 ```
 
-## Jenkins Agent Requirements
+## Values File Convention
 
-The Jenkins agents running these pipelines must provide:
-
-- `docker`
-- `git`
-- `curl`
-- `jq`
-- `yq v4`
-
-The application pipeline also enables Docker BuildKit during the image build:
-
-```sh
-DOCKER_BUILDKIT=1 docker build ...
-```
-
-## Jenkins Credentials
-
-The pipelines expect Jenkins `username/password` credentials for Git, Bitbucket, and Artifactory:
-
-| Credential parameter | Purpose |
-| --- | --- |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Docker login to the dev Artifactory repository. |
-| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Docker login to the prod Artifactory repository. |
-| `BITBUCKET_CREDENTIALS_ID` | Git clone/push and Bitbucket Data Center API calls. |
-
-The application pipeline can also inject Jenkins `Secret text` credentials into Docker BuildKit secrets:
-
-| Parameter | Purpose |
-| --- | --- |
-| `DOCKER_SECRET_TEXT_CREDENTIALS` | Maps Jenkins secret text credentials to environment variables. |
-| `DOCKER_BUILD_SECRETS` | Passes those variables or files to `docker build --secret`. |
-
-## Helm Values Convention
-
-The pipelines update YAML files using this shape:
+By default, the library updates and reads:
 
 ```yaml
 image:
-  repository: artifactory.example.com/docker-repo/my-service
+  repository: artifactory-dev.example.com/docker-dev-local/my-service
   tag: 1.2.3
 ```
 
-Defaults:
+The file path and YAML fields are configurable:
 
-- `values-dev.yaml` is used for dev.
-- `values-prod.yaml` is used for prod.
+| Parameter | Default | Purpose |
+| --- | --- | --- |
+| `VALUES_PATH` | `values.yaml` | Relative path to the values file in the deployment repository. |
+| `IMAGE_REPOSITORY_YQ_PATH` | `.image.repository` | yq path to the image repository field. |
+| `IMAGE_TAG_YQ_PATH` | `.image.tag` | yq path to the image tag field. |
 
-Both paths are configurable with `VALUES_DEV_PATH` and `VALUES_PROD_PATH`, so the files do not need to be at the repository root. For example, use `helm/values-dev.yaml`, `charts/my-service/values-dev.yaml`, or `environments/dev/values.yaml`.
-
-The YAML fields themselves are also configurable through yq paths. The defaults are:
-
-| Field | Default yq path |
-| --- | --- |
-| Image repository | `.image.repository` |
-| Image tag | `.image.tag` |
-
-Example for a nested chart values file:
+Nested values example:
 
 ```yaml
 apps:
   myService:
     image:
-      repository: artifactory.example.com/docker-repo/my-service
+      repository: artifactory-dev.example.com/docker-dev-local/my-service
       tag: 1.2.3
 ```
 
-Use these paths:
+Use:
 
 ```text
+VALUES_PATH=helm/values.yaml
 IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
 IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
 ```
@@ -208,43 +164,19 @@ For keys containing hyphens, quote the key in the yq path:
 IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
-## Examples Directory
+## Application Pipeline
 
-The `examples/` directory contains ready-to-copy examples:
-
-| Path | Purpose |
-| --- | --- |
-| `examples/application-repo/Jenkinsfile` | Application pipeline using non-root deployment values. |
-| `examples/application-repo/Jenkinsfile.with-buildkit-secret` | Application pipeline with Docker BuildKit secret injection. |
-| `examples/deployment-repo/Jenkinsfile` | Deployment promotion pipeline using non-root dev/prod values. |
-| `examples/deployment-repo/helm/values-dev.yaml` | Example dev values file under `helm/`. |
-| `examples/deployment-repo/helm/values-prod.yaml` | Example prod values file under `helm/`. |
-
-## Shared Library API
-
-### `dockerBuildAndDeployToDev(Map config = [:])`
-
-Runs the application pipeline.
-
-Main behavior:
+`dockerBuildAndDeployToDev(Map config = [:])`:
 
 - validates required parameters;
 - builds the Docker image;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
 - clones the deployment repository on `devel`;
-- updates `values-dev.yaml` through configurable yq paths;
+- updates `VALUES_PATH`;
 - commits and pushes only when the values file changes.
 
-Example with defaults:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerBuildAndDeployToDev()
-```
-
-Example with per-repository defaults:
+Example Jenkinsfile:
 
 ```groovy
 @Library('ci-shared-library') _
@@ -252,127 +184,16 @@ Example with per-repository defaults:
 dockerBuildAndDeployToDev(
     imageNameDefault: 'my-service',
     deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
+    deploymentBranchDefault: 'devel',
+    valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
-    dockerBuildSecretsDefault: '''
-id=npm_token,env=NPM_TOKEN
-''',
-    dockerSecretTextCredentialsDefault: '''
-NPM_TOKEN=npm-token-credential-id
-'''
-)
-```
-
-### `dockerPromoteToProd(Map config = [:])`
-
-Runs the deployment promotion pipeline.
-
-Main behavior:
-
-- validates that the PR source branch is `devel`;
-- validates that the PR target branch is `main`;
-- checks Bitbucket Data Center for at least one approval;
-- reads the dev image repository and tag from configurable yq paths in `values-dev.yaml`;
-- promotes the image with `docker pull`, `docker tag`, and `docker push`;
-- updates configurable yq paths in `values-prod.yaml`;
-- commits and pushes only when the production values file changes.
-
-Example:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerPromoteToProd(
-    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
-    bitbucketProjectKeyDefault: 'PLATFORM',
-    bitbucketRepoSlugDefault: 'deployment',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
-    artifactoryProdRepositoryDefault: 'docker-prod-local',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag'
+    artifactoryDevRepositoryDefault: 'docker-dev-local'
 )
 ```
 
-## Application Repository Usage
-
-1. Add a Jenkinsfile to the application repository.
-2. Load the shared library.
-3. Call `dockerBuildAndDeployToDev()`.
-4. Configure repository-specific defaults directly in the Jenkinsfile when useful.
-
-Minimal application Jenkinsfile:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerBuildAndDeployToDev()
-```
-
-Application Jenkinsfile with defaults:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerBuildAndDeployToDev(
-    imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    valuesDevPathDefault: 'helm/values-dev.yaml',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag'
-)
-```
-
-At build time, provide at least:
-
-```text
-VERSION=1.2.3
-IMAGE_NAME=my-service
-DEPLOYMENT_REPO_URL=https://bitbucket.example.com/scm/platform/deployment.git
-```
-
-## Deployment Repository Usage
-
-1. Add a Jenkinsfile to the ArgoCD deployment repository.
-2. Load the shared library.
-3. Call `dockerPromoteToProd()`.
-4. Configure Bitbucket, Artifactory, and YAML defaults.
-5. Configure the Jenkins job as a PR/multibranch job so Jenkins exposes `CHANGE_ID`, `CHANGE_BRANCH`, and `CHANGE_TARGET`, or pass `BITBUCKET_PR_ID` manually.
-
-Minimal deployment Jenkinsfile:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerPromoteToProd()
-```
-
-Deployment Jenkinsfile with defaults:
-
-```groovy
-@Library('ci-shared-library') _
-
-dockerPromoteToProd(
-    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
-    bitbucketProjectKeyDefault: 'PLATFORM',
-    bitbucketRepoSlugDefault: 'deployment',
-    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
-    artifactoryDevRepositoryDefault: 'docker-dev-local',
-    artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
-    artifactoryProdRepositoryDefault: 'docker-prod-local',
-    valuesDevPathDefault: 'helm/values-dev.yaml',
-    valuesProdPathDefault: 'helm/values-prod.yaml',
-    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    imageTagYqPathDefault: '.apps.myService.image.tag'
-)
-```
-
-## Application Pipeline Parameters
+Main parameters:
 
 | Parameter | Description |
 | --- | --- |
@@ -384,28 +205,22 @@ dockerPromoteToProd(
 | `DOCKER_SECRET_TEXT_CREDENTIALS` | Optional Jenkins secret text mappings, one per line. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `DEPLOYMENT_REPO_URL` | HTTPS URL of the ArgoCD deployment repository. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
-| `VALUES_DEV_PATH` | Path to the dev values file. Default: `values-dev.yaml`. |
-| `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. Default: `.image.repository`. |
-| `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. Default: `.image.tag`. |
-| `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Git/Bitbucket. |
+| `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
+| `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. |
+| `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. |
 
 ## Docker BuildKit Secrets
 
-Use Docker BuildKit secrets when the Docker build needs sensitive values, such as npm tokens, Maven settings, private package registry tokens, or license keys.
-
-### Secret text credential example
-
-In Jenkins, create a `Secret text` credential:
+Create a Jenkins `Secret text` credential:
 
 ```text
 ID: npm-token-credential-id
 Secret: <your npm token>
 ```
 
-Configure the build parameters:
+Configure:
 
 ```text
 DOCKER_SECRET_TEXT_CREDENTIALS:
@@ -415,13 +230,13 @@ DOCKER_BUILD_SECRETS:
 id=npm_token,env=NPM_TOKEN
 ```
 
-The shared library will run Docker with:
+The shared library runs:
 
 ```sh
 DOCKER_BUILDKIT=1 docker build --secret id=npm_token,env=NPM_TOKEN ...
 ```
 
-Inside the Dockerfile:
+Dockerfile example:
 
 ```dockerfile
 # syntax=docker/dockerfile:1.4
@@ -431,26 +246,37 @@ RUN --mount=type=secret,id=npm_token \
     npm ci
 ```
 
-### File secret example
+## Promotion Pipeline
 
-If the Jenkins workspace already contains a secret file generated by another step, pass it directly:
+`dockerPromoteToProd(Map config = [:])`:
 
-```text
-DOCKER_BUILD_SECRETS:
-id=maven_settings,src=.jenkins/settings.xml
+- validates that the PR source branch is `devel`;
+- validates that the PR target branch is `main`;
+- checks Bitbucket Data Center for at least one approval;
+- reads image repository and tag from `VALUES_PATH`;
+- promotes the image with `docker pull`, `docker tag`, and `docker push`;
+- does not modify or push any Git file.
+
+Example Jenkinsfile:
+
+```groovy
+@Library('ci-shared-library') _
+
+dockerPromoteToProd(
+    bitbucketBaseUrlDefault: 'https://bitbucket.example.com',
+    bitbucketProjectKeyDefault: 'PLATFORM',
+    bitbucketRepoSlugDefault: 'deployment',
+    valuesPathDefault: 'helm/values.yaml',
+    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    imageTagYqPathDefault: '.apps.myService.image.tag',
+    artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
+    artifactoryDevRepositoryDefault: 'docker-dev-local',
+    artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
+    artifactoryProdRepositoryDefault: 'docker-prod-local'
+)
 ```
 
-Inside the Dockerfile:
-
-```dockerfile
-# syntax=docker/dockerfile:1.4
-RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml \
-    mvn -B package
-```
-
-Do not use Docker build arguments for sensitive values. Build args are easier to leak through image metadata, logs, or layer history. BuildKit secrets are mounted only for the `RUN` instruction that requests them.
-
-## Deployment Pipeline Parameters
+Main parameters:
 
 | Parameter | Description |
 | --- | --- |
@@ -460,18 +286,15 @@ Do not use Docker build arguments for sensitive values. Build args are easier to
 | `BITBUCKET_PROJECT_KEY` | Bitbucket project key. |
 | `BITBUCKET_REPO_SLUG` | Bitbucket repository slug. |
 | `BITBUCKET_PR_ID` | Optional PR id. If empty, Jenkins uses `CHANGE_ID`. |
-| `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Bitbucket API and Git push. |
+| `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Bitbucket API and Git clone. |
 | `DEPLOYMENT_REPO_URL` | Optional HTTPS repo URL. If empty, current `origin` is used. |
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
 | `ARTIFACTORY_PROD_REGISTRY` | Prod Docker registry host. |
 | `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository. |
-| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
-| `VALUES_DEV_PATH` | Path to the dev values file. |
-| `VALUES_PROD_PATH` | Path to the prod values file. |
-| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the dev image repository and write the prod image repository. Default: `.image.repository`. |
-| `IMAGE_TAG_YQ_PATH` | yq path used to read the dev image tag and write the prod image tag. Default: `.image.tag`. |
+| `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
+| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository. |
+| `IMAGE_TAG_YQ_PATH` | yq path used to read the image tag. |
 
 ## Promotion Rules
 
@@ -480,64 +303,22 @@ The production promotion is refused when:
 - the PR source branch is not `devel`;
 - the PR target branch is not `main`;
 - the PR has no approval in Bitbucket Data Center;
-- `values-dev.yaml` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
-- the dev image repository does not start with the expected dev Artifactory prefix.
+- `VALUES_PATH` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
+- the image repository does not start with the expected dev Artifactory prefix.
 
-The promotion copies the image to prod Artifactory. It does not delete the image from dev Artifactory.
+The promotion copies the image to prod Artifactory. It does not delete the image from dev Artifactory and it does not update `values.yaml`.
 
 ## Recommended Tests
 
-### Application pipeline
+Application pipeline:
 
-Run a build with:
+- run a build with `VERSION=1.2.3-test` and `IMAGE_NAME=my-service`;
+- check that the image exists in dev Artifactory;
+- check that `VALUES_PATH` contains the expected repository and tag;
+- rerun the same version and check that no useless Git commit is created.
 
-```text
-VERSION=1.2.3-test
-IMAGE_NAME=my-service
-```
+Promotion pipeline:
 
-Check that:
-
-- the image exists in dev Artifactory;
-- `values-dev.yaml` contains the expected repository at `IMAGE_REPOSITORY_YQ_PATH`;
-- `values-dev.yaml` contains the expected tag at `IMAGE_TAG_YQ_PATH`;
-- rerunning the same version does not create a useless Git commit.
-
-### Application pipeline with BuildKit secret
-
-Run a build with:
-
-```text
-DOCKER_SECRET_TEXT_CREDENTIALS:
-NPM_TOKEN=npm-token-credential-id
-
-DOCKER_BUILD_SECRETS:
-id=npm_token,env=NPM_TOKEN
-```
-
-Check that:
-
-- the Docker build can access the secret during the mounted `RUN` step;
-- the secret value is not printed in Jenkins logs;
-- the secret value is not present in the final image layers.
-
-### Deployment pipeline without approval
-
-Create a PR from `devel` to `main` without approval.
-
-Check that:
-
-- the pipeline stops before promotion;
-- no image is pushed to prod Artifactory;
-- `values-prod.yaml` is not modified.
-
-### Deployment pipeline with approval
-
-Approve the PR and rerun the pipeline.
-
-Check that:
-
-- the image is copied from dev Artifactory to prod Artifactory;
-- `values-prod.yaml` contains the prod repository at `IMAGE_REPOSITORY_YQ_PATH`;
-- `values-prod.yaml` contains the tag read from `values-dev.yaml` at `IMAGE_TAG_YQ_PATH`;
-- rerunning the same promotion does not create a useless Git commit.
+- create a PR from `devel` to `main` without approval and verify promotion is refused;
+- approve the PR and verify the image is copied from dev Artifactory to prod Artifactory;
+- verify no file is committed by the promotion pipeline.
