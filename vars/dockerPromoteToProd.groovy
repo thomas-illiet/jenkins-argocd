@@ -47,7 +47,7 @@ def call(Map config = [:]) {
             stage('Promote Docker image to prod Artifactory') {
                 steps {
                     script {
-                        env.DEV_IMAGE_REPOSITORY = sh(
+                        def valuesImageRepository = sh(
                             returnStdout: true,
                             script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_PATH"'
                         ).trim()
@@ -55,18 +55,17 @@ def call(Map config = [:]) {
                             returnStdout: true,
                             script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_PATH"'
                         ).trim()
+                        env.PROMOTED_IMAGE_PATH = imagePathFromDockerRepository(valuesImageRepository)
 
-                        if (!env.DEV_IMAGE_REPOSITORY || env.DEV_IMAGE_REPOSITORY == 'null') {
-                            error("Missing value at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_PATH}")
+                        if (!env.PROMOTED_IMAGE_PATH || env.PROMOTED_IMAGE_PATH == 'null') {
+                            error("Missing image path at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_PATH}")
                         }
                         if (!env.PROMOTED_IMAGE_TAG || env.PROMOTED_IMAGE_TAG == 'null') {
                             error("Missing value at ${env.IMAGE_TAG_YQ_PATH} in ${params.VALUES_PATH}")
                         }
-                        if (!env.DEV_IMAGE_REPOSITORY.startsWith("${env.DEV_IMAGE_PREFIX}/")) {
-                            error("Dev image repository '${env.DEV_IMAGE_REPOSITORY}' does not start with expected prefix '${env.DEV_IMAGE_PREFIX}'.")
-                        }
 
-                        env.PROD_IMAGE_REPOSITORY = "${env.PROD_IMAGE_PREFIX}${env.DEV_IMAGE_REPOSITORY.substring(env.DEV_IMAGE_PREFIX.length())}"
+                        env.DEV_IMAGE_REPOSITORY = "${env.DEV_IMAGE_PREFIX}/${env.PROMOTED_IMAGE_PATH}"
+                        env.PROD_IMAGE_REPOSITORY = "${env.PROD_IMAGE_PREFIX}/${env.PROMOTED_IMAGE_PATH}"
                         env.DEV_IMAGE = "${env.DEV_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
                         env.PROD_IMAGE = "${env.PROD_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
 
@@ -116,6 +115,20 @@ def cleanDockerPath(String value) {
     return (value ?: '').trim()
         .replaceFirst(/^https?:\/\//, '')
         .replaceAll(/\/+$/, '')
+}
+
+def imagePathFromDockerRepository(String value) {
+    def cleanedValue = cleanDockerPath(value)
+    if (!cleanedValue || cleanedValue == 'null') {
+        return ''
+    }
+
+    def firstSlash = cleanedValue.indexOf('/')
+    if (firstSlash < 0) {
+        return cleanedValue
+    }
+
+    return cleanDockerPath(cleanedValue.substring(firstSlash + 1))
 }
 
 def joinArtifactoryDockerPath(List<String> parts) {

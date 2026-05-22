@@ -128,8 +128,8 @@ flowchart TD
     M --> N["dockerPromoteToProd"]
 
     subgraph PROMOTE["Promotion Pipeline"]
-        N --> P["Read image repository and tag from values.yaml"]
-        P --> Q["Calculate prod image name"]
+        N --> P["Read image path and tag from values.yaml"]
+        P --> Q["Build dev/prod image names from configured registries"]
         Q --> R["docker login to prod Artifactory"]
         R --> S{"Prod image already exists?"}
         S -->|Yes| T["Stop: overwrite refused"]
@@ -184,7 +184,7 @@ For keys containing hyphens, quote the key in the yq path:
 IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
-Dev and prod use the same values structure. Artifactory Docker repositories are exposed as subdomains, so `ARTIFACTORY_DEV_REGISTRY=artifactory-dev.example.com` and `ARTIFACTORY_DEV_REPOSITORY=docker-dev-local` produce `docker-dev-local.artifactory-dev.example.com/my-service`. Promotion reads the dev image reference from `VALUES_PATH`, replaces the dev Artifactory subdomain prefix with the prod Artifactory subdomain prefix, and only uploads the Docker image to the prod registry.
+Dev and prod use the same values structure. Artifactory Docker repositories are exposed as subdomains, so `ARTIFACTORY_DEV_REGISTRY=artifactory-dev.example.com` and `ARTIFACTORY_DEV_REPOSITORY=docker-dev-local` produce `docker-dev-local.artifactory-dev.example.com/my-service`. Promotion reads the image path and tag from `VALUES_PATH`, ignores the registry host from the repository value, builds dev/prod image names from the configured Artifactory dev/prod values, and only uploads the Docker image to the prod registry.
 
 ## Application Pipeline
 
@@ -333,8 +333,8 @@ RUN --mount=type=secret,id=npm_token \
 `dockerPromoteToProd(Map config = [:])`:
 
 - runs against the deployment repository workspace already checked out by Jenkins;
-- reads image repository and tag from `VALUES_PATH`;
-- calculates the prod image by replacing the dev Artifactory prefix with the prod Artifactory prefix;
+- reads image path and tag from `VALUES_PATH`;
+- builds the dev and prod image names from the configured Artifactory dev/prod values;
 - logs in to prod Artifactory and checks whether the target image already exists;
 - fails before push if the prod image already exists;
 - promotes the image with `docker pull`, `docker tag`, and `docker push`;
@@ -367,7 +367,7 @@ Main parameters:
 | `ARTIFACTORY_PROD_REGISTRY` | Prod Artifactory base host. |
 | `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository subdomain. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
-| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository. |
+| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository; only the image path after the registry host is used. |
 | `IMAGE_TAG_YQ_PATH` | yq path used to read the image tag. |
 
 Promotion pipeline config options that are intentionally not runtime parameters:
@@ -382,7 +382,7 @@ The production promotion is refused when:
 
 - `VALUES_PATH` does not exist in the checked-out workspace;
 - `VALUES_PATH` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
-- the image repository does not start with the expected dev Artifactory prefix;
+- the image repository value does not contain an image path;
 - the prod image already exists.
 
 Image existence checks use:
