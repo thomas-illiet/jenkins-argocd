@@ -22,6 +22,7 @@ def call(Map config = [:]) {
         gitAuthorName: 'jenkins',
         gitAuthorEmail: 'jenkins@example.com'
     ] + config
+    def runtimeEnv = []
 
     pipeline {
         agent any
@@ -87,14 +88,15 @@ def call(Map config = [:]) {
                         validateDockerBuildArgs(params.DOCKER_BUILD_ARGS)
                         parseSecretTextCredentialBindings(params.DOCKER_SECRET_TEXT_CREDENTIALS)
 
+                        def dockerBuildArgsEffective = normalizeMultiline(params.DOCKER_BUILD_ARGS)
+                        def dockerBuildSecretsEffective = normalizeMultiline(params.DOCKER_BUILD_SECRETS)
+
                         env.IMAGE_VERSION = params.IMAGE_VERSION.trim()
                         env.IMAGE_TIMESTAMP = new Date(currentBuild.startTimeInMillis).format('yyyyMMddHHmmss')
                         env.IMAGE_TAG = "${env.IMAGE_VERSION}-${env.IMAGE_TIMESTAMP}"
                         env.IMAGE_NAME_CLEAN = cleanDockerPath(params.IMAGE_NAME)
                         env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
                         env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
-                        env.DOCKER_BUILD_ARGS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_ARGS)
-                        env.DOCKER_BUILD_SECRETS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_SECRETS)
                         env.ARTIFACTORY_DEV_REGISTRY_CLEAN = joinArtifactoryDockerPath([
                             params.ARTIFACTORY_DEV_REGISTRY,
                             params.ARTIFACTORY_DEV_REPOSITORY
@@ -105,34 +107,65 @@ def call(Map config = [:]) {
                             env.IMAGE_NAME_CLEAN
                         ])
                         env.DEV_IMAGE = "${env.DEV_IMAGE_REPOSITORY}:${env.IMAGE_TAG}"
-                    }
 
-                    sh '''
-                        set -eu
-                        command -v docker >/dev/null
-                        command -v git >/dev/null
-                        command -v ssh >/dev/null
-                        command -v ssh-keyscan >/dev/null
-                        command -v yq >/dev/null
-                        yq --version | grep -q 'version v4'
-                        test -f "$DOCKERFILE_PATH"
-                    '''
+                        writeFile file: '.docker-build-args', text: dockerBuildArgsEffective ? "${dockerBuildArgsEffective}\n" : ''
+                        writeFile file: '.docker-build-secrets', text: dockerBuildSecretsEffective ? "${dockerBuildSecretsEffective}\n" : ''
+
+                        runtimeEnv = [
+                            "IMAGE_VERSION=${env.IMAGE_VERSION}",
+                            "IMAGE_TIMESTAMP=${env.IMAGE_TIMESTAMP}",
+                            "IMAGE_TAG=${env.IMAGE_TAG}",
+                            "IMAGE_NAME_CLEAN=${env.IMAGE_NAME_CLEAN}",
+                            "DOCKERFILE_PATH=${params.DOCKERFILE_PATH.trim()}",
+                            "DOCKER_BUILD_CONTEXT=${params.DOCKER_BUILD_CONTEXT.trim()}",
+                            "ARTIFACTORY_DEV_REGISTRY=${params.ARTIFACTORY_DEV_REGISTRY.trim()}",
+                            "ARTIFACTORY_DEV_REPOSITORY=${params.ARTIFACTORY_DEV_REPOSITORY.trim()}",
+                            "ARTIFACTORY_DEV_REGISTRY_CLEAN=${env.ARTIFACTORY_DEV_REGISTRY_CLEAN}",
+                            "DEV_IMAGE_REPOSITORY=${env.DEV_IMAGE_REPOSITORY}",
+                            "DEV_IMAGE=${env.DEV_IMAGE}",
+                            "DEPLOYMENT_REPO_URL=${params.DEPLOYMENT_REPO_URL.trim()}",
+                            "DEPLOYMENT_BRANCH=${params.DEPLOYMENT_BRANCH.trim()}",
+                            "VALUES_PATH=${params.VALUES_PATH.trim()}",
+                            "IMAGE_REPOSITORY_YQ_PATH=${env.IMAGE_REPOSITORY_YQ_PATH}",
+                            "IMAGE_TAG_YQ_PATH=${env.IMAGE_TAG_YQ_PATH}",
+                            "DEPLOYMENT_GIT_SSH_HOST=${params.DEPLOYMENT_GIT_SSH_HOST?.trim() ?: ''}",
+                            "DEPLOYMENT_GIT_SSH_PORT=${params.DEPLOYMENT_GIT_SSH_PORT.trim()}",
+                            "DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES=${params.DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES.trim()}",
+                            "GIT_AUTHOR_NAME=${params.GIT_AUTHOR_NAME.trim()}",
+                            "GIT_AUTHOR_EMAIL=${params.GIT_AUTHOR_EMAIL.trim()}"
+                        ]
+
+                        withEnv(runtimeEnv) {
+                            sh '''
+                                set -eu
+                                command -v docker >/dev/null
+                                command -v git >/dev/null
+                                command -v ssh >/dev/null
+                                command -v ssh-keyscan >/dev/null
+                                command -v yq >/dev/null
+                                yq --version | grep -q 'version v4'
+                                test -f "$DOCKERFILE_PATH"
+                            '''
+                        }
+                    }
                 }
             }
 
             stage('Check dev image does not exist') {
                 steps {
-                    sh '''
-                        set -eu
-                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
-                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
-                            --password-stdin
+                    withEnv(runtimeEnv) {
+                        sh '''
+                            set -eu
+                            printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                                --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                                --password-stdin
 
-                        if docker manifest inspect "$DEV_IMAGE" >/dev/null 2>&1; then
-                            echo "Image already exists in dev Artifactory and cannot be overwritten: $DEV_IMAGE" >&2
-                            exit 1
-                        fi
-                    '''
+                            if docker manifest inspect "$DEV_IMAGE" >/dev/null 2>&1; then
+                                echo "Image already exists in dev Artifactory and cannot be overwritten: $DEV_IMAGE" >&2
+                                exit 1
+                            fi
+                        '''
+                    }
                 }
             }
 
@@ -141,33 +174,37 @@ def call(Map config = [:]) {
                     script {
                         def secretTextBindings = parseSecretTextCredentialBindings(params.DOCKER_SECRET_TEXT_CREDENTIALS)
                         def buildImage = {
-                            sh '''
-                                set -eu
-                                set --
-                                printf '%s\n' "$DOCKER_BUILD_ARGS_EFFECTIVE" > "$WORKSPACE/.docker-build-args"
-                                printf '%s\n' "$DOCKER_BUILD_SECRETS_EFFECTIVE" > "$WORKSPACE/.docker-build-secrets"
+                            withEnv(runtimeEnv) {
+                                sh '''
+                                    set -eu
+                                    set --
+                                    test -f "$WORKSPACE/.docker-build-args"
+                                    test -f "$WORKSPACE/.docker-build-secrets"
 
-                                while IFS= read -r docker_build_arg || [ -n "$docker_build_arg" ]; do
-                                    [ -z "$docker_build_arg" ] && continue
-                                    first_char="$(printf '%s' "$docker_build_arg" | cut -c 1)"
-                                    [ "$first_char" = "#" ] && continue
-                                    set -- "$@" --build-arg "$docker_build_arg"
-                                done < "$WORKSPACE/.docker-build-args"
+                                    docker_build_arg=''
+                                    while IFS= read -r docker_build_arg || [ -n "$docker_build_arg" ]; do
+                                        [ -z "$docker_build_arg" ] && continue
+                                        first_char="$(printf '%s' "$docker_build_arg" | cut -c 1)"
+                                        [ "$first_char" = "#" ] && continue
+                                        set -- "$@" --build-arg "$docker_build_arg"
+                                    done < "$WORKSPACE/.docker-build-args"
 
-                                while IFS= read -r docker_secret || [ -n "$docker_secret" ]; do
-                                    [ -z "$docker_secret" ] && continue
-                                    first_char="$(printf '%s' "$docker_secret" | cut -c 1)"
-                                    [ "$first_char" = "#" ] && continue
-                                    set -- "$@" --secret "$docker_secret"
-                                done < "$WORKSPACE/.docker-build-secrets"
+                                    docker_secret=''
+                                    while IFS= read -r docker_secret || [ -n "$docker_secret" ]; do
+                                        [ -z "$docker_secret" ] && continue
+                                        first_char="$(printf '%s' "$docker_secret" | cut -c 1)"
+                                        [ "$first_char" = "#" ] && continue
+                                        set -- "$@" --secret "$docker_secret"
+                                    done < "$WORKSPACE/.docker-build-secrets"
 
-                                DOCKER_BUILDKIT=1 docker build \
-                                    "$@" \
-                                    --build-arg "imageVersion=$IMAGE_VERSION" \
-                                    -f "$DOCKERFILE_PATH" \
-                                    -t "$DEV_IMAGE" \
-                                    "$DOCKER_BUILD_CONTEXT"
-                            '''
+                                    DOCKER_BUILDKIT=1 docker build \
+                                        "$@" \
+                                        --build-arg "imageVersion=$IMAGE_VERSION" \
+                                        -f "$DOCKERFILE_PATH" \
+                                        -t "$DEV_IMAGE" \
+                                        "$DOCKER_BUILD_CONTEXT"
+                                '''
+                            }
                         }
 
                         if (secretTextBindings) {
@@ -183,13 +220,15 @@ def call(Map config = [:]) {
 
             stage('Push image to dev Artifactory') {
                 steps {
-                    sh '''
-                        set -eu
-                        printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
-                            --username "$ARTIFACTORY_CREDENTIALS_USR" \
-                            --password-stdin
-                        docker push "$DEV_IMAGE"
-                    '''
+                    withEnv(runtimeEnv) {
+                        sh '''
+                            set -eu
+                            printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_DEV_REGISTRY_CLEAN" \
+                                --username "$ARTIFACTORY_CREDENTIALS_USR" \
+                                --password-stdin
+                            docker push "$DEV_IMAGE"
+                        '''
+                    }
                 }
             }
 
@@ -202,80 +241,82 @@ def call(Map config = [:]) {
                             usernameVariable: 'GIT_SSH_USERNAME'
                         )
                     ]) {
-                        sh '''
-                            set -eu
-                            rm -rf "$DEPLOYMENT_WORKDIR"
-                            previous_core_ssh_command="$(git config --global --get core.sshCommand || true)"
-                            restore_core_ssh_command() {
-                                if [ -n "$previous_core_ssh_command" ]; then
-                                    git config --global core.sshCommand "$previous_core_ssh_command"
-                                else
-                                    git config --global --unset core.sshCommand >/dev/null 2>&1 || true
+                        withEnv(runtimeEnv) {
+                            sh '''
+                                set -eu
+                                rm -rf "$DEPLOYMENT_WORKDIR"
+                                previous_core_ssh_command="$(git config --global --get core.sshCommand || true)"
+                                restore_core_ssh_command() {
+                                    if [ -n "$previous_core_ssh_command" ]; then
+                                        git config --global core.sshCommand "$previous_core_ssh_command"
+                                    else
+                                        git config --global --unset core.sshCommand >/dev/null 2>&1 || true
+                                    fi
+                                }
+                                trap restore_core_ssh_command EXIT
+
+                                git_ssh_host="${DEPLOYMENT_GIT_SSH_HOST:-}"
+                                git_ssh_port="$DEPLOYMENT_GIT_SSH_PORT"
+                                if [ -z "$git_ssh_host" ]; then
+                                    case "$DEPLOYMENT_REPO_URL" in
+                                        ssh://*)
+                                            repo_without_scheme="${DEPLOYMENT_REPO_URL#ssh://}"
+                                            repo_without_user="${repo_without_scheme#*@}"
+                                            host_port="${repo_without_user%%/*}"
+                                            git_ssh_host="${host_port%%:*}"
+                                            case "$host_port" in
+                                                *:*) git_ssh_port="${host_port##*:}" ;;
+                                            esac
+                                            ;;
+                                        *@*:*)
+                                            repo_without_user="${DEPLOYMENT_REPO_URL#*@}"
+                                            git_ssh_host="${repo_without_user%%:*}"
+                                            ;;
+                                    esac
                                 fi
-                            }
-                            trap restore_core_ssh_command EXIT
+                                if [ -z "$git_ssh_host" ]; then
+                                    echo "Unable to infer Git SSH host. Set DEPLOYMENT_GIT_SSH_HOST." >&2
+                                    exit 1
+                                fi
 
-                            git_ssh_host="$DEPLOYMENT_GIT_SSH_HOST"
-                            git_ssh_port="$DEPLOYMENT_GIT_SSH_PORT"
-                            if [ -z "$git_ssh_host" ]; then
-                                case "$DEPLOYMENT_REPO_URL" in
-                                    ssh://*)
-                                        repo_without_scheme="${DEPLOYMENT_REPO_URL#ssh://}"
-                                        repo_without_user="${repo_without_scheme#*@}"
-                                        host_port="${repo_without_user%%/*}"
-                                        git_ssh_host="${host_port%%:*}"
-                                        case "$host_port" in
-                                            *:*) git_ssh_port="${host_port##*:}" ;;
-                                        esac
-                                        ;;
-                                    *@*:*)
-                                        repo_without_user="${DEPLOYMENT_REPO_URL#*@}"
-                                        git_ssh_host="${repo_without_user%%:*}"
-                                        ;;
-                                esac
-                            fi
-                            if [ -z "$git_ssh_host" ]; then
-                                echo "Unable to infer Git SSH host. Set DEPLOYMENT_GIT_SSH_HOST." >&2
-                                exit 1
-                            fi
+                                mkdir -p "$HOME/.ssh"
+                                chmod 0700 "$HOME/.ssh"
+                                touch "$HOME/.ssh/known_hosts"
+                                chmod 0600 "$HOME/.ssh/known_hosts"
+                                ssh-keyscan \
+                                    -p "$git_ssh_port" \
+                                    -t "$DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES" \
+                                    "$git_ssh_host" >> "$HOME/.ssh/known_hosts"
+                                sort -u "$HOME/.ssh/known_hosts" -o "$HOME/.ssh/known_hosts"
 
-                            mkdir -p "$HOME/.ssh"
-                            chmod 0700 "$HOME/.ssh"
-                            touch "$HOME/.ssh/known_hosts"
-                            chmod 0600 "$HOME/.ssh/known_hosts"
-                            ssh-keyscan \
-                                -p "$git_ssh_port" \
-                                -t "$DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES" \
-                                "$git_ssh_host" >> "$HOME/.ssh/known_hosts"
-                            sort -u "$HOME/.ssh/known_hosts" -o "$HOME/.ssh/known_hosts"
+                                git config --global user.email "$GIT_AUTHOR_EMAIL"
+                                git config --global user.name "$GIT_AUTHOR_NAME"
+                                git config --global core.sshCommand "ssh -i '$GIT_SSH_KEY' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$HOME/.ssh/known_hosts'"
+                                export GIT_TERMINAL_PROMPT=0
 
-                            git config --global user.email "$GIT_AUTHOR_EMAIL"
-                            git config --global user.name "$GIT_AUTHOR_NAME"
-                            git config --global core.sshCommand "ssh -i '$GIT_SSH_KEY' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$HOME/.ssh/known_hosts'"
-                            export GIT_TERMINAL_PROMPT=0
+                                git clone \
+                                    --branch "$DEPLOYMENT_BRANCH" \
+                                    --single-branch \
+                                    "$DEPLOYMENT_REPO_URL" \
+                                    "$DEPLOYMENT_WORKDIR"
 
-                            git clone \
-                                --branch "$DEPLOYMENT_BRANCH" \
-                                --single-branch \
-                                "$DEPLOYMENT_REPO_URL" \
-                                "$DEPLOYMENT_WORKDIR"
+                                cd "$DEPLOYMENT_WORKDIR"
+                                test -f "$VALUES_PATH"
 
-                            cd "$DEPLOYMENT_WORKDIR"
-                            test -f "$VALUES_PATH"
+                                export IMAGE_REPOSITORY_VALUE="$DEV_IMAGE_REPOSITORY"
+                                export IMAGE_TAG_VALUE="$IMAGE_TAG"
+                                yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PATH"
 
-                            export IMAGE_REPOSITORY_VALUE="$DEV_IMAGE_REPOSITORY"
-                            export IMAGE_TAG_VALUE="$IMAGE_TAG"
-                            yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PATH"
+                                if git diff --quiet -- "$VALUES_PATH"; then
+                                    echo "No values change to commit."
+                                    exit 0
+                                fi
 
-                            if git diff --quiet -- "$VALUES_PATH"; then
-                                echo "No values change to commit."
-                                exit 0
-                            fi
-
-                            git add "$VALUES_PATH"
-                            git commit -m "Deploy ${IMAGE_NAME_CLEAN}:${IMAGE_TAG}"
-                            git push origin "HEAD:${DEPLOYMENT_BRANCH}"
-                        '''
+                                git add "$VALUES_PATH"
+                                git commit -m "Deploy ${IMAGE_NAME_CLEAN}:${IMAGE_TAG}"
+                                git push origin "HEAD:${DEPLOYMENT_BRANCH}"
+                            '''
+                        }
                     }
                 }
             }
