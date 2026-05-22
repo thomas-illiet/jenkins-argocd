@@ -14,7 +14,7 @@ def call(Map config = [:]) {
         valuesPathDefault: 'values.yaml',
         imageRepositoryYqPathDefault: '.image.repository',
         imageTagYqPathDefault: '.image.tag',
-        gitCredentialsIdDefault: 'deployment-git',
+        gitCredentialsIdDefault: 'deployment-git-ssh',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
     ] + config
@@ -39,12 +39,12 @@ def call(Map config = [:]) {
             string(name: 'ARTIFACTORY_DEV_REPOSITORY', defaultValue: "${cfg.artifactoryDevRepositoryDefault}", description: 'Dev Artifactory Docker repository.')
             string(name: 'ARTIFACTORY_DEV_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryDevCredentialsIdDefault}", description: 'Jenkins username/password credentials for dev Artifactory.')
 
-            string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'HTTPS URL of the ArgoCD/deployment Git repository.')
+            string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'SSH URL of the ArgoCD/deployment Git repository.')
             string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranchDefault}", description: 'Deployment branch to update.')
             string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPathDefault}", description: 'Relative path to the values file inside the deployment repository, for example helm/values.yaml.')
             string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
-            string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsIdDefault}", description: 'Jenkins username/password credentials for deployment Git clone and push.')
+            string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsIdDefault}", description: 'Jenkins SSH username/private key credentials for deployment Git clone and push.')
 
             string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for deployment commits.')
             string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for deployment commits.')
@@ -185,25 +185,34 @@ def call(Map config = [:]) {
             stage('Update ArgoCD values') {
                 steps {
                     withCredentials([
-                        usernamePassword(
+                        sshUserPrivateKey(
                             credentialsId: params.GIT_CREDENTIALS_ID,
-                            usernameVariable: 'GIT_USERNAME',
-                            passwordVariable: 'GIT_PASSWORD'
+                            keyFileVariable: 'GIT_SSH_KEY',
+                            usernameVariable: 'GIT_SSH_USERNAME'
                         )
                     ]) {
                         sh '''
                             set -eu
                             rm -rf "$DEPLOYMENT_WORKDIR"
 
-                            cat > "$WORKSPACE/.git-askpass" <<'EOF'
+                            GIT_SSH_WRAPPER_DIR="$(mktemp -d)"
+                            trap 'rm -rf "$GIT_SSH_WRAPPER_DIR"' EXIT
+                            export GIT_SSH_KNOWN_HOSTS="$GIT_SSH_WRAPPER_DIR/known_hosts"
+                            touch "$GIT_SSH_KNOWN_HOSTS"
+                            chmod 600 "$GIT_SSH_KNOWN_HOSTS"
+
+                            cat > "$GIT_SSH_WRAPPER_DIR/git-ssh" <<'EOF'
 #!/bin/sh
-case "$1" in
-    *Username*|*username*) printf '%s\n' "$GIT_USERNAME" ;;
-    *) printf '%s\n' "$GIT_PASSWORD" ;;
-esac
+exec ssh \
+    -i "$GIT_SSH_KEY" \
+    -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="$GIT_SSH_KNOWN_HOSTS" \
+    "$@"
 EOF
-                            chmod 700 "$WORKSPACE/.git-askpass"
-                            export GIT_ASKPASS="$WORKSPACE/.git-askpass"
+                            chmod 700 "$GIT_SSH_WRAPPER_DIR/git-ssh"
+                            export GIT_SSH="$GIT_SSH_WRAPPER_DIR/git-ssh"
+                            export GIT_SSH_VARIANT=ssh
                             export GIT_TERMINAL_PROMPT=0
 
                             git clone \
@@ -242,7 +251,7 @@ EOF
                     if [ -n "${ARTIFACTORY_DEV_REGISTRY_CLEAN:-}" ]; then
                         docker logout "$ARTIFACTORY_DEV_REGISTRY_CLEAN" >/dev/null 2>&1
                     fi
-                    rm -f "$WORKSPACE/.git-askpass" "$WORKSPACE/.docker-build-secrets"
+                    rm -f "$WORKSPACE/.docker-build-secrets"
                 '''
             }
         }

@@ -9,6 +9,6 @@ The pipeline supports Docker BuildKit secrets through DOCKER_BUILD_SECRETS and o
 
 Before building, the pipeline checks whether the target dev image already exists and fails cleanly if the registry cannot accept an overwrite.
 
-Use GIT_CREDENTIALS_ID for deployment Git clone and push credentials.
+Use GIT_CREDENTIALS_ID for deployment Git clone and push credentials. It must reference a Jenkins SSH Username with private key credential and is bound with sshUserPrivateKey.
 
 The values file can live outside the repository root. Configure its relative path with VALUES_PATH and its image fields with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.

@@ -54,13 +54,13 @@ The library name can be different, but Jenkinsfiles must use the same name in `@
 
 ## Credentials
 
-The pipelines expect Jenkins `username/password` credentials:
+The pipelines expect these Jenkins credentials:
 
 | Credential parameter | Purpose |
 | --- | --- |
-| `ARTIFACTORY_DEV_CREDENTIALS_ID` | Docker login to the dev Artifactory repository. |
-| `ARTIFACTORY_PROD_CREDENTIALS_ID` | Docker login to the prod Artifactory repository. |
-| `GIT_CREDENTIALS_ID` | Deployment Git clone and push used by the application pipeline. |
+| `ARTIFACTORY_DEV_CREDENTIALS_ID` | `username/password` credential for Docker login to the dev Artifactory repository. |
+| `ARTIFACTORY_PROD_CREDENTIALS_ID` | `username/password` credential for Docker login to the prod Artifactory repository. |
+| `GIT_CREDENTIALS_ID` | `SSH Username with private key` credential for deployment Git clone and push. The pipeline binds it with `sshUserPrivateKey`. |
 
 The application pipeline can also inject Jenkins `Secret text` credentials into Docker BuildKit secrets.
 
@@ -196,14 +196,14 @@ Example Jenkinsfile:
 
 dockerBuildAndDeployToDev(
     imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'https://git.example.com/platform/deployment.git',
+    deploymentRepoUrlDefault: 'git@git.example.com:platform/deployment.git',
     deploymentBranchDefault: 'devel',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
-    gitCredentialsIdDefault: 'deployment-git'
+    gitCredentialsIdDefault: 'deployment-git-ssh'
 )
 ```
 
@@ -220,12 +220,14 @@ Main parameters:
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
 | `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
-| `DEPLOYMENT_REPO_URL` | HTTPS URL of the ArgoCD deployment repository. |
+| `DEPLOYMENT_REPO_URL` | SSH URL of the ArgoCD deployment repository, for example `git@git.example.com:platform/deployment.git`. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. |
 | `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. |
-| `GIT_CREDENTIALS_ID` | Jenkins credentials for deployment Git clone and push. |
+| `GIT_CREDENTIALS_ID` | Jenkins `SSH Username with private key` credential for deployment Git clone and push. |
+
+For deployment Git access, create a Jenkins credential of type `SSH Username with private key`. The private key should be usable non-interactively by the Jenkins agent. The application pipeline uses that credential through `sshUserPrivateKey`, creates a temporary SSH wrapper, and uses a temporary `known_hosts` file with `StrictHostKeyChecking=accept-new`.
 
 ## Docker BuildKit Secrets
 
