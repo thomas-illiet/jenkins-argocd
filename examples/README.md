@@ -39,10 +39,17 @@ apps:
       tag: 1.2.3-20260522143015
 ```
 
-This is handled by:
+The application pipeline updates both nested image fields:
 
 ```groovy
 imageRepositoryYqPath: '.apps.myService.image.repository'
+imageTagYqPath: '.apps.myService.image.tag'
+```
+
+The promotion pipeline only needs the image name and the tag field:
+
+```groovy
+imageName: 'my-service'
 imageTagYqPath: '.apps.myService.image.tag'
 ```
 
@@ -53,7 +60,7 @@ imageTagYqPath: '.apps.myService.image.tag'
 3. Keep or adapt the `helm/values.yaml` layout.
 4. Replace placeholder registry, Git, and credential values with your real Jenkins setup. Both dev and prod Docker logins use the shared `artifactoryCredentialsId` configured in the Jenkinsfile.
 5. Run the application build with an `IMAGE_VERSION`. The Docker build receives it as `--build-arg imageVersion`, while the image tag written to values is `IMAGE_VERSION-yyyyMMddHHmmss`.
-6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion only uploads the referenced image to prod Artifactory and fails if that image already exists there.
+6. Run the deployment promotion job from a workspace containing the deployment repository. The promotion uploads the configured image name with the tag from values to prod Artifactory and fails if that image already exists there.
 
 ## Non-secret Docker build args
 

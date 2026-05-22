@@ -9,8 +9,8 @@ Example:
 @Library('ci-shared-library') _
 dockerPromoteToProd()
 
-The values file can live outside the repository root. Configure its relative path with VALUES_PATH and configure the image fields with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.
+The values file can live outside the repository root. Configure its relative path with VALUES_PATH and configure the image tag field with IMAGE_TAG_YQ_PATH.
 
-Promotion extracts the image path and tag from the values file, but builds the dev and prod image names from the configured ARTIFACTORY_DEV_* and ARTIFACTORY_PROD_* values. The registry host in the values file is not used to select the source or target registry.
+Promotion uses IMAGE_NAME for the image path and extracts only the image tag from the values file. It builds the dev and prod image names from the configured ARTIFACTORY_DEV_* and ARTIFACTORY_PROD_* values.
 
 Before pushing to prod, the pipeline checks whether the target image already exists with docker manifest inspect and fails cleanly if the registry cannot accept an overwrite.

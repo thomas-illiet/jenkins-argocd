@@ -1,8 +1,8 @@
 @Library('ci-shared-library') _
 
 dockerPromoteToProd(
+    imageName: 'my-service',
     valuesPath: 'helm/values.yaml',
-    imageRepositoryYqPath: '.apps.myService.image.repository',
     imageTagYqPath: '.apps.myService.image.tag',
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',

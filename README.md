@@ -128,7 +128,7 @@ flowchart TD
     M --> N["dockerPromoteToProd"]
 
     subgraph PROMOTE["Promotion Pipeline"]
-        N --> P["Read image path and tag from values.yaml"]
+        N --> P["Read image tag from values.yaml"]
         P --> Q["Build dev/prod image names from configured registries"]
         Q --> R["docker login to prod Artifactory"]
         R --> S{"Prod image already exists?"}
@@ -144,7 +144,7 @@ flowchart TD
 
 ## Values File Convention
 
-By default, the library updates and reads:
+By default, the application pipeline updates:
 
 ```yaml
 image:
@@ -152,7 +152,7 @@ image:
   tag: 1.2.3-20260522143015
 ```
 
-The file path and YAML fields are configurable:
+The file path and YAML fields are configurable. The promotion pipeline reads only the tag field from this file and uses `IMAGE_NAME` for the image path:
 
 | Parameter | Default | Purpose |
 | --- | --- | --- |
@@ -184,7 +184,7 @@ For keys containing hyphens, quote the key in the yq path:
 IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
-Dev and prod use the same values structure. Artifactory Docker repositories are exposed as subdomains, so `ARTIFACTORY_DEV_REGISTRY=artifactory-dev.example.com` and `ARTIFACTORY_DEV_REPOSITORY=docker-dev-local` produce `docker-dev-local.artifactory-dev.example.com/my-service`. Promotion reads the image path and tag from `VALUES_PATH`, ignores the registry host from the repository value, builds dev/prod image names from the configured Artifactory dev/prod values, and only uploads the Docker image to the prod registry.
+Dev and prod use the same values structure. Artifactory Docker repositories are exposed as subdomains, so `ARTIFACTORY_DEV_REGISTRY=artifactory-dev.example.com` and `ARTIFACTORY_DEV_REPOSITORY=docker-dev-local` produce `docker-dev-local.artifactory-dev.example.com/my-service`. Promotion reads the tag from `VALUES_PATH`, uses `IMAGE_NAME` for the image path, builds dev/prod image names from the configured Artifactory dev/prod values, and only uploads the Docker image to the prod registry.
 
 ## Application Pipeline
 
@@ -333,7 +333,8 @@ RUN --mount=type=secret,id=npm_token \
 `dockerPromoteToProd(Map config = [:])`:
 
 - runs against the deployment repository workspace already checked out by Jenkins;
-- reads image path and tag from `VALUES_PATH`;
+- reads the image tag from `VALUES_PATH`;
+- uses `IMAGE_NAME` as the image path;
 - builds the dev and prod image names from the configured Artifactory dev/prod values;
 - logs in to prod Artifactory and checks whether the target image already exists;
 - fails before push if the prod image already exists;
@@ -347,8 +348,8 @@ Example Jenkinsfile:
 @Library('ci-shared-library') _
 
 dockerPromoteToProd(
+    imageName: 'my-service',
     valuesPath: 'helm/values.yaml',
-    imageRepositoryYqPath: '.apps.myService.image.repository',
     imageTagYqPath: '.apps.myService.image.tag',
     artifactoryDevRegistry: 'artifactory-dev.example.com',
     artifactoryDevRepository: 'docker-dev-local',
@@ -366,8 +367,8 @@ Main parameters:
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository subdomain. |
 | `ARTIFACTORY_PROD_REGISTRY` | Prod Artifactory base host. |
 | `ARTIFACTORY_PROD_REPOSITORY` | Prod Artifactory Docker repository subdomain. |
+| `IMAGE_NAME` | Docker image name or image path, for example `my-service` or `team/my-service`. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
-| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the image repository; only the image path after the registry host is used. |
 | `IMAGE_TAG_YQ_PATH` | yq path used to read the image tag. |
 
 Promotion pipeline config options that are intentionally not runtime parameters:
@@ -380,9 +381,9 @@ Promotion pipeline config options that are intentionally not runtime parameters:
 
 The production promotion is refused when:
 
+- `IMAGE_NAME` is empty;
 - `VALUES_PATH` does not exist in the checked-out workspace;
-- `VALUES_PATH` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
-- the image repository value does not contain an image path;
+- `VALUES_PATH` does not contain a value at `IMAGE_TAG_YQ_PATH`;
 - the prod image already exists.
 
 Image existence checks use:

@@ -5,8 +5,8 @@ def call(Map config = [:]) {
         artifactoryCredentialsId: 'artifactory-docker',
         artifactoryProdRegistry: 'artifactory-prod.example.com',
         artifactoryProdRepository: 'docker-prod-local',
+        imageName: '',
         valuesPath: 'values.yaml',
-        imageRepositoryYqPath: '.image.repository',
         imageTagYqPath: '.image.tag'
     ] + config
     pipeline {
@@ -23,8 +23,8 @@ def call(Map config = [:]) {
             string(name: 'ARTIFACTORY_PROD_REGISTRY', defaultValue: "${cfg.artifactoryProdRegistry}", description: 'Production Docker registry host, without protocol.')
             string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepository}", description: 'Production Artifactory Docker repository.')
 
+            string(name: 'IMAGE_NAME', defaultValue: "${cfg.imageName}", description: 'Docker image name, for example my-service.')
             string(name: 'VALUES_PATH', defaultValue: "${cfg.valuesPath}", description: 'Relative path to the values file in the checked-out deployment repository, for example helm/values.yaml.')
-            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPath}", description: 'yq path to the image repository field in the values file.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPath}", description: 'yq path to the image tag field in the values file.')
         }
 
@@ -34,8 +34,8 @@ def call(Map config = [:]) {
             ARTIFACTORY_DEV_REPOSITORY = "${params.ARTIFACTORY_DEV_REPOSITORY.trim()}"
             ARTIFACTORY_PROD_REGISTRY = "${params.ARTIFACTORY_PROD_REGISTRY.trim()}"
             ARTIFACTORY_PROD_REPOSITORY = "${params.ARTIFACTORY_PROD_REPOSITORY.trim()}"
+            IMAGE_NAME_CLEAN = "${cleanDockerPath(params.IMAGE_NAME)}"
             VALUES_PATH = "${params.VALUES_PATH.trim()}"
-            IMAGE_REPOSITORY_YQ_PATH = "${params.IMAGE_REPOSITORY_YQ_PATH.trim()}"
             IMAGE_TAG_YQ_PATH = "${params.IMAGE_TAG_YQ_PATH.trim()}"
             ARTIFACTORY_DEV_REGISTRY_CLEAN = "${joinArtifactoryDockerPath([params.ARTIFACTORY_DEV_REGISTRY, params.ARTIFACTORY_DEV_REPOSITORY])}"
             ARTIFACTORY_PROD_REGISTRY_CLEAN = "${joinArtifactoryDockerPath([params.ARTIFACTORY_PROD_REGISTRY, params.ARTIFACTORY_PROD_REPOSITORY])}"
@@ -47,25 +47,20 @@ def call(Map config = [:]) {
             stage('Promote Docker image to prod Artifactory') {
                 steps {
                     script {
-                        def valuesImageRepository = sh(
-                            returnStdout: true,
-                            script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_PATH"'
-                        ).trim()
                         env.PROMOTED_IMAGE_TAG = sh(
                             returnStdout: true,
                             script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_PATH"'
                         ).trim()
-                        env.PROMOTED_IMAGE_PATH = imagePathFromDockerRepository(valuesImageRepository)
 
-                        if (!env.PROMOTED_IMAGE_PATH || env.PROMOTED_IMAGE_PATH == 'null') {
-                            error("Missing image path at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_PATH}")
+                        if (!env.IMAGE_NAME_CLEAN || env.IMAGE_NAME_CLEAN == 'null') {
+                            error('Missing required parameter: IMAGE_NAME')
                         }
                         if (!env.PROMOTED_IMAGE_TAG || env.PROMOTED_IMAGE_TAG == 'null') {
                             error("Missing value at ${env.IMAGE_TAG_YQ_PATH} in ${params.VALUES_PATH}")
                         }
 
-                        env.DEV_IMAGE_REPOSITORY = "${env.DEV_IMAGE_PREFIX}/${env.PROMOTED_IMAGE_PATH}"
-                        env.PROD_IMAGE_REPOSITORY = "${env.PROD_IMAGE_PREFIX}/${env.PROMOTED_IMAGE_PATH}"
+                        env.DEV_IMAGE_REPOSITORY = "${env.DEV_IMAGE_PREFIX}/${env.IMAGE_NAME_CLEAN}"
+                        env.PROD_IMAGE_REPOSITORY = "${env.PROD_IMAGE_PREFIX}/${env.IMAGE_NAME_CLEAN}"
                         env.DEV_IMAGE = "${env.DEV_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
                         env.PROD_IMAGE = "${env.PROD_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
 
@@ -115,20 +110,6 @@ def cleanDockerPath(String value) {
     return (value ?: '').trim()
         .replaceFirst(/^https?:\/\//, '')
         .replaceAll(/\/+$/, '')
-}
-
-def imagePathFromDockerRepository(String value) {
-    def cleanedValue = cleanDockerPath(value)
-    if (!cleanedValue || cleanedValue == 'null') {
-        return ''
-    }
-
-    def firstSlash = cleanedValue.indexOf('/')
-    if (firstSlash < 0) {
-        return cleanedValue
-    }
-
-    return cleanDockerPath(cleanedValue.substring(firstSlash + 1))
 }
 
 def joinArtifactoryDockerPath(List<String> parts) {
