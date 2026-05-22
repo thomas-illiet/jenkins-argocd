@@ -113,8 +113,7 @@ flowchart TD
     A["Application repo: build with IMAGE_VERSION"] --> B["dockerBuildAndDeployToDev"]
 
     subgraph APP["Application Pipeline"]
-        B --> C["Validate parameters and tools"]
-        C --> D["docker login to dev Artifactory"]
+        B --> D["docker login to dev Artifactory"]
         D --> E{"Dev image already exists?"}
         E -->|Yes| F["Stop: overwrite refused"]
         E -->|No| G["docker build with optional BuildKit secrets"]
@@ -129,8 +128,7 @@ flowchart TD
     M --> N["dockerPromoteToProd"]
 
     subgraph PROMOTE["Promotion Pipeline"]
-        N --> O["Validate parameters and tools"]
-        O --> P["Read image repository and tag from values.yaml"]
+        N --> P["Read image repository and tag from values.yaml"]
         P --> Q["Calculate prod image name"]
         Q --> R["docker login to prod Artifactory"]
         R --> S{"Prod image already exists?"}

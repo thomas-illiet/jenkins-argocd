@@ -9,8 +9,6 @@ def call(Map config = [:]) {
         imageRepositoryYqPath: '.image.repository',
         imageTagYqPath: '.image.tag'
     ] + config
-    def runtimeEnv = []
-
     pipeline {
         agent any
 
@@ -32,78 +30,31 @@ def call(Map config = [:]) {
 
         environment {
             ARTIFACTORY_CREDENTIALS = credentials("${cfg.artifactoryCredentialsId}")
+            ARTIFACTORY_DEV_REGISTRY = "${params.ARTIFACTORY_DEV_REGISTRY.trim()}"
+            ARTIFACTORY_DEV_REPOSITORY = "${params.ARTIFACTORY_DEV_REPOSITORY.trim()}"
+            ARTIFACTORY_PROD_REGISTRY = "${params.ARTIFACTORY_PROD_REGISTRY.trim()}"
+            ARTIFACTORY_PROD_REPOSITORY = "${params.ARTIFACTORY_PROD_REPOSITORY.trim()}"
+            VALUES_PATH = "${params.VALUES_PATH.trim()}"
+            IMAGE_REPOSITORY_YQ_PATH = "${params.IMAGE_REPOSITORY_YQ_PATH.trim()}"
+            IMAGE_TAG_YQ_PATH = "${params.IMAGE_TAG_YQ_PATH.trim()}"
+            ARTIFACTORY_DEV_REGISTRY_CLEAN = "${joinArtifactoryDockerPath([params.ARTIFACTORY_DEV_REGISTRY, params.ARTIFACTORY_DEV_REPOSITORY])}"
+            ARTIFACTORY_PROD_REGISTRY_CLEAN = "${joinArtifactoryDockerPath([params.ARTIFACTORY_PROD_REGISTRY, params.ARTIFACTORY_PROD_REPOSITORY])}"
+            DEV_IMAGE_PREFIX = "${joinArtifactoryDockerPath([params.ARTIFACTORY_DEV_REGISTRY, params.ARTIFACTORY_DEV_REPOSITORY])}"
+            PROD_IMAGE_PREFIX = "${joinArtifactoryDockerPath([params.ARTIFACTORY_PROD_REGISTRY, params.ARTIFACTORY_PROD_REPOSITORY])}"
         }
 
         stages {
-            stage('Validate parameters and tools') {
+            stage('Promote Docker image to prod Artifactory') {
                 steps {
                     script {
-                        [
-                            'ARTIFACTORY_DEV_REGISTRY',
-                            'ARTIFACTORY_DEV_REPOSITORY',
-                            'ARTIFACTORY_PROD_REGISTRY',
-                            'ARTIFACTORY_PROD_REPOSITORY',
-                            'VALUES_PATH',
-                            'IMAGE_REPOSITORY_YQ_PATH',
-                            'IMAGE_TAG_YQ_PATH'
-                        ].each { requireParam(it) }
-
-                        env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
-                        env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
-                        env.ARTIFACTORY_DEV_REGISTRY_CLEAN = joinArtifactoryDockerPath([
-                            params.ARTIFACTORY_DEV_REGISTRY,
-                            params.ARTIFACTORY_DEV_REPOSITORY
-                        ])
-                        env.ARTIFACTORY_PROD_REGISTRY_CLEAN = joinArtifactoryDockerPath([
-                            params.ARTIFACTORY_PROD_REGISTRY,
-                            params.ARTIFACTORY_PROD_REPOSITORY
-                        ])
-                        env.DEV_IMAGE_PREFIX = env.ARTIFACTORY_DEV_REGISTRY_CLEAN
-                        env.PROD_IMAGE_PREFIX = joinArtifactoryDockerPath([
-                            params.ARTIFACTORY_PROD_REGISTRY,
-                            params.ARTIFACTORY_PROD_REPOSITORY
-                        ])
-
-                        runtimeEnv = [
-                            "ARTIFACTORY_DEV_REGISTRY=${params.ARTIFACTORY_DEV_REGISTRY.trim()}",
-                            "ARTIFACTORY_DEV_REPOSITORY=${params.ARTIFACTORY_DEV_REPOSITORY.trim()}",
-                            "ARTIFACTORY_PROD_REGISTRY=${params.ARTIFACTORY_PROD_REGISTRY.trim()}",
-                            "ARTIFACTORY_PROD_REPOSITORY=${params.ARTIFACTORY_PROD_REPOSITORY.trim()}",
-                            "VALUES_PATH=${params.VALUES_PATH.trim()}",
-                            "IMAGE_REPOSITORY_YQ_PATH=${env.IMAGE_REPOSITORY_YQ_PATH}",
-                            "IMAGE_TAG_YQ_PATH=${env.IMAGE_TAG_YQ_PATH}",
-                            "ARTIFACTORY_DEV_REGISTRY_CLEAN=${env.ARTIFACTORY_DEV_REGISTRY_CLEAN}",
-                            "ARTIFACTORY_PROD_REGISTRY_CLEAN=${env.ARTIFACTORY_PROD_REGISTRY_CLEAN}",
-                            "DEV_IMAGE_PREFIX=${env.DEV_IMAGE_PREFIX}",
-                            "PROD_IMAGE_PREFIX=${env.PROD_IMAGE_PREFIX}"
-                        ]
-
-                        withEnv(runtimeEnv) {
-                            sh '''
-                                set -eu
-                                command -v docker >/dev/null
-                                command -v yq >/dev/null
-                                yq --version | grep -q 'version v4'
-                                test -f "$VALUES_PATH"
-                            '''
-                        }
-                    }
-                }
-            }
-
-            stage('Read image and calculate prod image') {
-                steps {
-                    script {
-                        withEnv(runtimeEnv) {
-                            env.DEV_IMAGE_REPOSITORY = sh(
-                                returnStdout: true,
-                                script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_PATH"'
-                            ).trim()
-                            env.PROMOTED_IMAGE_TAG = sh(
-                                returnStdout: true,
-                                script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_PATH"'
-                            ).trim()
-                        }
+                        env.DEV_IMAGE_REPOSITORY = sh(
+                            returnStdout: true,
+                            script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_PATH"'
+                        ).trim()
+                        env.PROMOTED_IMAGE_TAG = sh(
+                            returnStdout: true,
+                            script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_PATH"'
+                        ).trim()
 
                         if (!env.DEV_IMAGE_REPOSITORY || env.DEV_IMAGE_REPOSITORY == 'null') {
                             error("Missing value at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_PATH}")
@@ -119,20 +70,6 @@ def call(Map config = [:]) {
                         env.DEV_IMAGE = "${env.DEV_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
                         env.PROD_IMAGE = "${env.PROD_IMAGE_REPOSITORY}:${env.PROMOTED_IMAGE_TAG}"
 
-                        runtimeEnv = runtimeEnv + [
-                            "DEV_IMAGE_REPOSITORY=${env.DEV_IMAGE_REPOSITORY}",
-                            "PROMOTED_IMAGE_TAG=${env.PROMOTED_IMAGE_TAG}",
-                            "PROD_IMAGE_REPOSITORY=${env.PROD_IMAGE_REPOSITORY}",
-                            "DEV_IMAGE=${env.DEV_IMAGE}",
-                            "PROD_IMAGE=${env.PROD_IMAGE}"
-                        ]
-                    }
-                }
-            }
-
-            stage('Promote Docker image to prod Artifactory') {
-                steps {
-                    withEnv(runtimeEnv) {
                         sh '''
                             set -eu
                             printf '%s' "$ARTIFACTORY_CREDENTIALS_PSW" | docker login "$ARTIFACTORY_PROD_REGISTRY_CLEAN" \
@@ -191,10 +128,4 @@ def joinArtifactoryDockerPath(List<String> parts) {
     def repositorySubdomain = cleanedParts[1]
     def imagePathParts = cleanedParts.drop(2)
     return (["${repositorySubdomain}.${registryHost}"] + imagePathParts).join('/')
-}
-
-def requireParam(String name) {
-    if (!params[name]?.trim()) {
-        error("Missing required parameter: ${name}")
-    }
 }
