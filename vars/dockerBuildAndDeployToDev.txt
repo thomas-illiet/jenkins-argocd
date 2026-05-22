@@ -11,4 +11,6 @@ Before building, the pipeline checks whether the target dev image already exists
 
 Use GIT_CREDENTIALS_ID for deployment Git clone and push credentials. It must reference a Jenkins SSH Username with private key credential and is bound with sshUserPrivateKey.
 
+The deployment Git SSH host, port, and keyscan types are configurable with DEPLOYMENT_GIT_SSH_HOST, DEPLOYMENT_GIT_SSH_PORT, and DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES. The pipeline prepares ~/.ssh/known_hosts with ssh-keyscan and configures Git core.sshCommand with the Jenkins private key before clone and push.
+
 The values file can live outside the repository root. Configure its relative path with VALUES_PATH and its image fields with IMAGE_REPOSITORY_YQ_PATH and IMAGE_TAG_YQ_PATH.

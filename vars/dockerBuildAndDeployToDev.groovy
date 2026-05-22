@@ -15,6 +15,9 @@ def call(Map config = [:]) {
         imageRepositoryYqPathDefault: '.image.repository',
         imageTagYqPathDefault: '.image.tag',
         gitCredentialsIdDefault: 'deployment-git-ssh',
+        deploymentGitSshHostDefault: '',
+        deploymentGitSshPortDefault: '22',
+        deploymentGitSshKeyscanTypesDefault: 'rsa,ecdsa,ed25519',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
     ] + config
@@ -45,6 +48,9 @@ def call(Map config = [:]) {
             string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
             string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
             string(name: 'GIT_CREDENTIALS_ID', defaultValue: "${cfg.gitCredentialsIdDefault}", description: 'Jenkins SSH username/private key credentials for deployment Git clone and push.')
+            string(name: 'DEPLOYMENT_GIT_SSH_HOST', defaultValue: "${cfg.deploymentGitSshHostDefault}", description: 'Optional Git SSH host for ssh-keyscan. If empty, it is inferred from DEPLOYMENT_REPO_URL.')
+            string(name: 'DEPLOYMENT_GIT_SSH_PORT', defaultValue: "${cfg.deploymentGitSshPortDefault}", description: 'Git SSH port used by ssh-keyscan.')
+            string(name: 'DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES', defaultValue: "${cfg.deploymentGitSshKeyscanTypesDefault}", description: 'Comma-separated ssh-keyscan key types.')
 
             string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for deployment commits.')
             string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for deployment commits.')
@@ -71,7 +77,9 @@ def call(Map config = [:]) {
                             'VALUES_PATH',
                             'IMAGE_REPOSITORY_YQ_PATH',
                             'IMAGE_TAG_YQ_PATH',
-                            'GIT_CREDENTIALS_ID'
+                            'GIT_CREDENTIALS_ID',
+                            'DEPLOYMENT_GIT_SSH_PORT',
+                            'DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES'
                         ].each { requireParam(it) }
 
                         validateDockerBuildSecrets(params.DOCKER_BUILD_SECRETS)
@@ -95,6 +103,8 @@ def call(Map config = [:]) {
                         set -eu
                         command -v docker >/dev/null
                         command -v git >/dev/null
+                        command -v ssh >/dev/null
+                        command -v ssh-keyscan >/dev/null
                         command -v yq >/dev/null
                         yq --version | grep -q 'version v4'
                         test -f "$DOCKERFILE_PATH"
@@ -194,25 +204,53 @@ def call(Map config = [:]) {
                         sh '''
                             set -eu
                             rm -rf "$DEPLOYMENT_WORKDIR"
+                            previous_core_ssh_command="$(git config --global --get core.sshCommand || true)"
+                            restore_core_ssh_command() {
+                                if [ -n "$previous_core_ssh_command" ]; then
+                                    git config --global core.sshCommand "$previous_core_ssh_command"
+                                else
+                                    git config --global --unset core.sshCommand >/dev/null 2>&1 || true
+                                fi
+                            }
+                            trap restore_core_ssh_command EXIT
 
-                            GIT_SSH_WRAPPER_DIR="$(mktemp -d)"
-                            trap 'rm -rf "$GIT_SSH_WRAPPER_DIR"' EXIT
-                            export GIT_SSH_KNOWN_HOSTS="$GIT_SSH_WRAPPER_DIR/known_hosts"
-                            touch "$GIT_SSH_KNOWN_HOSTS"
-                            chmod 600 "$GIT_SSH_KNOWN_HOSTS"
+                            git_ssh_host="$DEPLOYMENT_GIT_SSH_HOST"
+                            git_ssh_port="$DEPLOYMENT_GIT_SSH_PORT"
+                            if [ -z "$git_ssh_host" ]; then
+                                case "$DEPLOYMENT_REPO_URL" in
+                                    ssh://*)
+                                        repo_without_scheme="${DEPLOYMENT_REPO_URL#ssh://}"
+                                        repo_without_user="${repo_without_scheme#*@}"
+                                        host_port="${repo_without_user%%/*}"
+                                        git_ssh_host="${host_port%%:*}"
+                                        case "$host_port" in
+                                            *:*) git_ssh_port="${host_port##*:}" ;;
+                                        esac
+                                        ;;
+                                    *@*:*)
+                                        repo_without_user="${DEPLOYMENT_REPO_URL#*@}"
+                                        git_ssh_host="${repo_without_user%%:*}"
+                                        ;;
+                                esac
+                            fi
+                            if [ -z "$git_ssh_host" ]; then
+                                echo "Unable to infer Git SSH host. Set DEPLOYMENT_GIT_SSH_HOST." >&2
+                                exit 1
+                            fi
 
-                            cat > "$GIT_SSH_WRAPPER_DIR/git-ssh" <<'EOF'
-#!/bin/sh
-exec ssh \
-    -i "$GIT_SSH_KEY" \
-    -o IdentitiesOnly=yes \
-    -o StrictHostKeyChecking=accept-new \
-    -o UserKnownHostsFile="$GIT_SSH_KNOWN_HOSTS" \
-    "$@"
-EOF
-                            chmod 700 "$GIT_SSH_WRAPPER_DIR/git-ssh"
-                            export GIT_SSH="$GIT_SSH_WRAPPER_DIR/git-ssh"
-                            export GIT_SSH_VARIANT=ssh
+                            mkdir -p "$HOME/.ssh"
+                            chmod 0700 "$HOME/.ssh"
+                            touch "$HOME/.ssh/known_hosts"
+                            chmod 0600 "$HOME/.ssh/known_hosts"
+                            ssh-keyscan \
+                                -p "$git_ssh_port" \
+                                -t "$DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES" \
+                                "$git_ssh_host" >> "$HOME/.ssh/known_hosts"
+                            sort -u "$HOME/.ssh/known_hosts" -o "$HOME/.ssh/known_hosts"
+
+                            git config --global user.email "$GIT_AUTHOR_EMAIL"
+                            git config --global user.name "$GIT_AUTHOR_NAME"
+                            git config --global core.sshCommand "ssh -i '$GIT_SSH_KEY' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$HOME/.ssh/known_hosts'"
                             export GIT_TERMINAL_PROMPT=0
 
                             git clone \
@@ -233,8 +271,6 @@ EOF
                                 exit 0
                             fi
 
-                            git config user.name "$GIT_AUTHOR_NAME"
-                            git config user.email "$GIT_AUTHOR_EMAIL"
                             git add "$VALUES_PATH"
                             git commit -m "Deploy ${IMAGE_NAME_CLEAN}:${IMAGE_TAG}"
                             git push origin "HEAD:${DEPLOYMENT_BRANCH}"

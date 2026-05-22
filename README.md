@@ -44,7 +44,7 @@ Repository URL: https://github.com/thomas-illiet/jenkins-argocd.git
 5. Make sure Jenkins agents have the required tools:
 
 ```text
-Application pipeline: docker, git, yq v4
+Application pipeline: docker, git, ssh, ssh-keyscan, yq v4
 Promotion pipeline: docker, yq v4
 ```
 
@@ -108,28 +108,29 @@ flowchart TD
         E -->|Yes| F["Stop: overwrite refused"]
         E -->|No| G["docker build with optional BuildKit secrets"]
         G --> H["docker push image:VERSION to dev"]
-        H --> I["Clone deployment repo on configured branch"]
-        I --> J["Update configured values.yaml"]
-        J --> K["Commit and push if changed"]
+        H --> I["Prepare SSH known_hosts and core.sshCommand"]
+        I --> J["Clone deployment repo on configured branch"]
+        J --> K["Update configured values.yaml"]
+        K --> L["Commit and push if changed"]
     end
 
-    K --> L["Deployment repo pipeline trigger"]
-    L --> M["dockerPromoteToProd"]
+    L --> M["Deployment repo pipeline trigger"]
+    M --> N["dockerPromoteToProd"]
 
     subgraph PROMOTE["Promotion Pipeline"]
-        M --> N["Validate parameters and tools"]
-        N --> O["Read image repository and tag from values.yaml"]
-        O --> P["Calculate prod image name"]
-        P --> Q["docker login to prod Artifactory"]
-        Q --> R{"Prod image already exists?"}
-        R -->|Yes| S["Stop: overwrite refused"]
-        R -->|No| T["docker login to dev Artifactory"]
-        T --> U["docker pull dev image"]
-        U --> V["docker tag prod image"]
-        V --> W["docker push prod image"]
+        N --> O["Validate parameters and tools"]
+        O --> P["Read image repository and tag from values.yaml"]
+        P --> Q["Calculate prod image name"]
+        Q --> R["docker login to prod Artifactory"]
+        R --> S{"Prod image already exists?"}
+        S -->|Yes| T["Stop: overwrite refused"]
+        S -->|No| U["docker login to dev Artifactory"]
+        U --> V["docker pull dev image"]
+        V --> W["docker tag prod image"]
+        W --> X["docker push prod image"]
     end
 
-    W --> X["ArgoCD can deploy from the promoted branch or release process"]
+    X --> Y["ArgoCD can deploy from the promoted branch or release process"]
 ```
 
 ## Values File Convention
@@ -185,6 +186,8 @@ Dev and prod use the same values structure. Promotion reads the dev image refere
 - builds the Docker image;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
+- prepares `~/.ssh/known_hosts` with `ssh-keyscan`;
+- configures Git `core.sshCommand` with the Jenkins private key;
 - clones the deployment repository on the configured branch;
 - updates `VALUES_PATH`;
 - commits and pushes only when the values file changes.
@@ -196,14 +199,16 @@ Example Jenkinsfile:
 
 dockerBuildAndDeployToDev(
     imageNameDefault: 'my-service',
-    deploymentRepoUrlDefault: 'git@git.example.com:platform/deployment.git',
+    deploymentRepoUrlDefault: 'ssh://git@git.example.com:7999/platform/deployment.git',
     deploymentBranchDefault: 'devel',
     valuesPathDefault: 'helm/values.yaml',
     imageRepositoryYqPathDefault: '.apps.myService.image.repository',
     imageTagYqPathDefault: '.apps.myService.image.tag',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
-    gitCredentialsIdDefault: 'deployment-git-ssh'
+    gitCredentialsIdDefault: 'deployment-git-ssh',
+    deploymentGitSshHostDefault: 'git.example.com',
+    deploymentGitSshPortDefault: '7999'
 )
 ```
 
@@ -220,14 +225,29 @@ Main parameters:
 | `ARTIFACTORY_DEV_REGISTRY` | Dev Docker registry host, without protocol. |
 | `ARTIFACTORY_DEV_REPOSITORY` | Dev Artifactory Docker repository. |
 | `ARTIFACTORY_DEV_CREDENTIALS_ID` | Jenkins credentials for dev Artifactory. |
-| `DEPLOYMENT_REPO_URL` | SSH URL of the ArgoCD deployment repository, for example `git@git.example.com:platform/deployment.git`. |
+| `DEPLOYMENT_REPO_URL` | SSH URL of the ArgoCD deployment repository, for example `ssh://git@git.example.com:7999/platform/deployment.git`. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_PATH` | Relative path to the values file. Default: `values.yaml`. |
 | `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. |
 | `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. |
 | `GIT_CREDENTIALS_ID` | Jenkins `SSH Username with private key` credential for deployment Git clone and push. |
+| `DEPLOYMENT_GIT_SSH_HOST` | Optional Git SSH host used by `ssh-keyscan`. If empty, the pipeline infers it from `DEPLOYMENT_REPO_URL`. |
+| `DEPLOYMENT_GIT_SSH_PORT` | Git SSH port used by `ssh-keyscan`. Default: `22`. |
+| `DEPLOYMENT_GIT_SSH_KEYSCAN_TYPES` | Comma-separated `ssh-keyscan` key types. Default: `rsa,ecdsa,ed25519`. |
 
-For deployment Git access, create a Jenkins credential of type `SSH Username with private key`. The private key should be usable non-interactively by the Jenkins agent. The application pipeline uses that credential through `sshUserPrivateKey`, creates a temporary SSH wrapper, and uses a temporary `known_hosts` file with `StrictHostKeyChecking=accept-new`.
+For deployment Git access, create a Jenkins credential of type `SSH Username with private key`. The private key should be usable non-interactively by the Jenkins agent. The application pipeline uses that credential through `sshUserPrivateKey`, prepares `~/.ssh/known_hosts` with `ssh-keyscan`, configures Git for the clone and push, then restores any previous global `core.sshCommand`.
+
+```sh
+git config --global core.sshCommand "ssh -i '<jenkins-key-file>' -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile='$HOME/.ssh/known_hosts'"
+```
+
+For Git servers using a non-standard SSH port, prefer an `ssh://` URL:
+
+```text
+DEPLOYMENT_REPO_URL=ssh://git@git.example.com:7999/platform/deployment.git
+DEPLOYMENT_GIT_SSH_HOST=git.example.com
+DEPLOYMENT_GIT_SSH_PORT=7999
+```
 
 ## Docker BuildKit Secrets
 
