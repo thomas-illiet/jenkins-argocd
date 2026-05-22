@@ -1,3 +1,5 @@
+![Jenkins library](assets/readme-banner.svg)
+
 # Jenkins Shared Library for Docker, Artifactory, and ArgoCD
 
 This repository provides a Jenkins Shared Library for a simple GitOps delivery flow:

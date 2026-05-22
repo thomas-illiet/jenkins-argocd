@@ -1,0 +1,77 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Jenkins library</title>
+  <desc id="desc">README banner for a Jenkins shared library that builds Docker images, promotes them through Artifactory, and updates ArgoCD values.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="0.52" stop-color="#1F2937"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="156" y1="277" x2="1118" y2="82" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E11D48"/>
+      <stop offset="0.48" stop-color="#F59E0B"/>
+      <stop offset="1" stop-color="#38BDF8"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="360" rx="28" fill="url(#bg)"/>
+  <path d="M0 275C148 214 245 250 375 208C517 162 580 69 732 85C911 104 974 222 1280 126V360H0V275Z" fill="url(#accent)" opacity="0.14"/>
+  <path d="M0 292C180 221 276 277 432 226C580 178 650 103 792 122C952 144 1025 247 1280 167" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" opacity="0.86"/>
+
+  <g opacity="0.16">
+    <path d="M104 72H1176" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M104 132H1176" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M104 192H1176" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M104 252H1176" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M180 48V312" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M360 48V312" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M540 48V312" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M720 48V312" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M900 48V312" stroke="#E5E7EB" stroke-width="1"/>
+    <path d="M1080 48V312" stroke="#E5E7EB" stroke-width="1"/>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="94" y="86" width="146" height="146" rx="24" fill="#F9FAFB"/>
+    <circle cx="167" cy="141" r="32" fill="#D1D5DB"/>
+    <path d="M134 194C141 171 154 159 167 159C180 159 193 171 200 194" stroke="#111827" stroke-width="14" stroke-linecap="round"/>
+    <path d="M143 130C151 113 183 113 191 130" stroke="#111827" stroke-width="11" stroke-linecap="round"/>
+    <path d="M133 147C126 157 125 172 133 182" stroke="#E11D48" stroke-width="10" stroke-linecap="round"/>
+    <path d="M201 147C208 157 209 172 201 182" stroke="#E11D48" stroke-width="10" stroke-linecap="round"/>
+    <path d="M152 204H182" stroke="#E11D48" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <text x="284" y="150" fill="#F9FAFB" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="72" font-weight="800" letter-spacing="0">Jenkins library</text>
+    <text x="288" y="203" fill="#CBD5E1" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="25" font-weight="500" letter-spacing="0">Docker builds, Artifactory promotion, and ArgoCD values automation</text>
+  </g>
+
+  <g transform="translate(292 244)">
+    <rect x="0" y="0" width="152" height="42" rx="21" fill="#111827" stroke="#475569"/>
+    <circle cx="25" cy="21" r="7" fill="#38BDF8"/>
+    <text x="44" y="28" fill="#E5E7EB" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" letter-spacing="0">Docker</text>
+  </g>
+  <g transform="translate(462 244)">
+    <rect x="0" y="0" width="170" height="42" rx="21" fill="#111827" stroke="#475569"/>
+    <circle cx="25" cy="21" r="7" fill="#F59E0B"/>
+    <text x="44" y="28" fill="#E5E7EB" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" letter-spacing="0">Artifactory</text>
+  </g>
+  <g transform="translate(650 244)">
+    <rect x="0" y="0" width="152" height="42" rx="21" fill="#111827" stroke="#475569"/>
+    <circle cx="25" cy="21" r="7" fill="#E11D48"/>
+    <text x="44" y="28" fill="#E5E7EB" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="17" font-weight="700" letter-spacing="0">ArgoCD</text>
+  </g>
+
+  <g opacity="0.88">
+    <path d="M1022 96H1132C1150 96 1164 110 1164 128V238C1164 256 1150 270 1132 270H1022C1004 270 990 256 990 238V128C990 110 1004 96 1022 96Z" fill="#0B1120" stroke="#334155" stroke-width="2"/>
+    <path d="M1018 140H1136" stroke="#475569" stroke-width="2"/>
+    <path d="M1032 124H1050" stroke="#38BDF8" stroke-width="6" stroke-linecap="round"/>
+    <path d="M1062 124H1080" stroke="#F59E0B" stroke-width="6" stroke-linecap="round"/>
+    <path d="M1030 170H1105" stroke="#CBD5E1" stroke-width="8" stroke-linecap="round"/>
+    <path d="M1030 200H1130" stroke="#64748B" stroke-width="8" stroke-linecap="round"/>
+    <path d="M1030 230H1086" stroke="#E11D48" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
