@@ -49,8 +49,8 @@ def call(Map config = [:]) {
             string(name: 'ARTIFACTORY_PROD_REPOSITORY', defaultValue: "${cfg.artifactoryProdRepositoryDefault}", description: 'Production Artifactory Docker repository.')
             string(name: 'ARTIFACTORY_PROD_CREDENTIALS_ID', defaultValue: "${cfg.artifactoryProdCredentialsIdDefault}", description: 'Jenkins username/password credentials for prod Artifactory.')
 
-            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Path to values-dev.yaml.')
-            string(name: 'VALUES_PROD_PATH', defaultValue: "${cfg.valuesProdPathDefault}", description: 'Path to values-prod.yaml.')
+            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file, for example helm/values-dev.yaml.')
+            string(name: 'VALUES_PROD_PATH', defaultValue: "${cfg.valuesProdPathDefault}", description: 'Relative path to the prod values file, for example helm/values-prod.yaml.')
             string(name: 'DEV_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.devImageRepositoryYqPathDefault}", description: 'yq path to the dev image repository field.')
             string(name: 'DEV_IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.devImageTagYqPathDefault}", description: 'yq path to the dev image tag field.')
             string(name: 'PROD_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.prodImageRepositoryYqPathDefault}", description: 'yq path to the prod image repository field.')

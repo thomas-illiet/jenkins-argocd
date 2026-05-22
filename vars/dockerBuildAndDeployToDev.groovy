@@ -41,7 +41,7 @@ def call(Map config = [:]) {
 
             string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'HTTPS URL of the ArgoCD/deployment Git repository.')
             string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranchDefault}", description: 'Deployment branch to update.')
-            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Path to values-dev.yaml inside the deployment repository.')
+            string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file inside the deployment repository, for example helm/values-dev.yaml.')
             string(name: 'DEV_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.devImageRepositoryYqPathDefault}", description: 'yq path to the dev image repository field.')
             string(name: 'DEV_IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.devImageTagYqPathDefault}", description: 'yq path to the dev image tag field.')
             string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: "${cfg.bitbucketCredentialsIdDefault}", description: 'Jenkins username/password credentials for Bitbucket Git push.')

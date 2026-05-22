@@ -14,6 +14,9 @@ This repository provides a Jenkins Shared Library plus two thin Jenkinsfile exam
 .
 |-- Jenkinsfile.app
 |-- Jenkinsfile.deployment
+|-- examples
+|   |-- application-repo
+|   `-- deployment-repo
 `-- vars
     |-- dockerBuildAndDeployToDev.groovy
     |-- dockerBuildAndDeployToDev.txt
@@ -53,9 +56,12 @@ application-repo
 
 deployment-repo
 |-- Jenkinsfile
-|-- values-dev.yaml
-`-- values-prod.yaml
+`-- helm
+    |-- values-dev.yaml
+    `-- values-prod.yaml
 ```
+
+See [examples/README.md](examples/README.md) for copyable Jenkinsfiles and non-root values files.
 
 ## Jenkinsfiles
 
@@ -170,7 +176,7 @@ Defaults:
 - `values-dev.yaml` is used for dev.
 - `values-prod.yaml` is used for prod.
 
-Both paths are configurable with `VALUES_DEV_PATH` and `VALUES_PROD_PATH`.
+Both paths are configurable with `VALUES_DEV_PATH` and `VALUES_PROD_PATH`, so the files do not need to be at the repository root. For example, use `helm/values-dev.yaml`, `charts/my-service/values-dev.yaml`, or `environments/dev/values.yaml`.
 
 The YAML fields themselves are also configurable through yq paths. The defaults are:
 
@@ -205,6 +211,18 @@ For keys containing hyphens, quote the key in the yq path:
 ```text
 DEV_IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
+
+## Examples Directory
+
+The `examples/` directory contains ready-to-copy examples:
+
+| Path | Purpose |
+| --- | --- |
+| `examples/application-repo/Jenkinsfile` | Application pipeline using non-root deployment values. |
+| `examples/application-repo/Jenkinsfile.with-buildkit-secret` | Application pipeline with Docker BuildKit secret injection. |
+| `examples/deployment-repo/Jenkinsfile` | Deployment promotion pipeline using non-root dev/prod values. |
+| `examples/deployment-repo/helm/values-dev.yaml` | Example dev values file under `helm/`. |
+| `examples/deployment-repo/helm/values-prod.yaml` | Example prod values file under `helm/`. |
 
 ## Shared Library API
 

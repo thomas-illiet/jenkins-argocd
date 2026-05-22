@@ -7,4 +7,4 @@ dockerBuildAndDeployToDev()
 
 The pipeline supports Docker BuildKit secrets through DOCKER_BUILD_SECRETS and optional Jenkins secret text credentials through DOCKER_SECRET_TEXT_CREDENTIALS.
 
-The dev values file and image fields are configurable through VALUES_DEV_PATH, DEV_IMAGE_REPOSITORY_YQ_PATH, and DEV_IMAGE_TAG_YQ_PATH.
+The dev values file can live outside the repository root. Configure its relative path with VALUES_DEV_PATH and its image fields with DEV_IMAGE_REPOSITORY_YQ_PATH and DEV_IMAGE_TAG_YQ_PATH.

@@ -1,0 +1,13 @@
+apps:
+  myService:
+    image:
+      repository: artifactory-dev.example.com/docker-dev-local/my-service
+      tag: 1.2.3-dev
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
