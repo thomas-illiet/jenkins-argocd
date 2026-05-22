@@ -182,10 +182,8 @@ The YAML fields themselves are also configurable through yq paths. The defaults 
 
 | Field | Default yq path |
 | --- | --- |
-| Dev image repository | `.image.repository` |
-| Dev image tag | `.image.tag` |
-| Prod image repository | `.image.repository` |
-| Prod image tag | `.image.tag` |
+| Image repository | `.image.repository` |
+| Image tag | `.image.tag` |
 
 Example for a nested chart values file:
 
@@ -200,16 +198,14 @@ apps:
 Use these paths:
 
 ```text
-DEV_IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
-DEV_IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
-PROD_IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
-PROD_IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
+IMAGE_REPOSITORY_YQ_PATH=.apps.myService.image.repository
+IMAGE_TAG_YQ_PATH=.apps.myService.image.tag
 ```
 
 For keys containing hyphens, quote the key in the yq path:
 
 ```text
-DEV_IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
+IMAGE_TAG_YQ_PATH=.apps."my-service".image.tag
 ```
 
 ## Examples Directory
@@ -258,8 +254,8 @@ dockerBuildAndDeployToDev(
     deploymentRepoUrlDefault: 'https://bitbucket.example.com/scm/platform/deployment.git',
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
-    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    devImageTagYqPathDefault: '.apps.myService.image.tag',
+    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    imageTagYqPathDefault: '.apps.myService.image.tag',
     dockerBuildSecretsDefault: '''
 id=npm_token,env=NPM_TOKEN
 ''',
@@ -296,10 +292,8 @@ dockerPromoteToProd(
     artifactoryDevRepositoryDefault: 'docker-dev-local',
     artifactoryProdRegistryDefault: 'artifactory-prod.example.com',
     artifactoryProdRepositoryDefault: 'docker-prod-local',
-    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    devImageTagYqPathDefault: '.apps.myService.image.tag',
-    prodImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    prodImageTagYqPathDefault: '.apps.myService.image.tag'
+    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    imageTagYqPathDefault: '.apps.myService.image.tag'
 )
 ```
 
@@ -329,8 +323,8 @@ dockerBuildAndDeployToDev(
     artifactoryDevRegistryDefault: 'artifactory-dev.example.com',
     artifactoryDevRepositoryDefault: 'docker-dev-local',
     valuesDevPathDefault: 'helm/values-dev.yaml',
-    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    devImageTagYqPathDefault: '.apps.myService.image.tag'
+    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    imageTagYqPathDefault: '.apps.myService.image.tag'
 )
 ```
 
@@ -373,10 +367,8 @@ dockerPromoteToProd(
     artifactoryProdRepositoryDefault: 'docker-prod-local',
     valuesDevPathDefault: 'helm/values-dev.yaml',
     valuesProdPathDefault: 'helm/values-prod.yaml',
-    devImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    devImageTagYqPathDefault: '.apps.myService.image.tag',
-    prodImageRepositoryYqPathDefault: '.apps.myService.image.repository',
-    prodImageTagYqPathDefault: '.apps.myService.image.tag'
+    imageRepositoryYqPathDefault: '.apps.myService.image.repository',
+    imageTagYqPathDefault: '.apps.myService.image.tag'
 )
 ```
 
@@ -396,8 +388,8 @@ dockerPromoteToProd(
 | `DEPLOYMENT_REPO_URL` | HTTPS URL of the ArgoCD deployment repository. |
 | `DEPLOYMENT_BRANCH` | Deployment branch to update. Default: `devel`. |
 | `VALUES_DEV_PATH` | Path to the dev values file. Default: `values-dev.yaml`. |
-| `DEV_IMAGE_REPOSITORY_YQ_PATH` | yq path to the dev image repository field. Default: `.image.repository`. |
-| `DEV_IMAGE_TAG_YQ_PATH` | yq path to the dev image tag field. Default: `.image.tag`. |
+| `IMAGE_REPOSITORY_YQ_PATH` | yq path to the image repository field. Default: `.image.repository`. |
+| `IMAGE_TAG_YQ_PATH` | yq path to the image tag field. Default: `.image.tag`. |
 | `BITBUCKET_CREDENTIALS_ID` | Jenkins credentials for Git/Bitbucket. |
 
 ## Docker BuildKit Secrets
@@ -478,10 +470,8 @@ Do not use Docker build arguments for sensitive values. Build args are easier to
 | `ARTIFACTORY_PROD_CREDENTIALS_ID` | Jenkins credentials for prod Artifactory. |
 | `VALUES_DEV_PATH` | Path to the dev values file. |
 | `VALUES_PROD_PATH` | Path to the prod values file. |
-| `DEV_IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the dev image repository. Default: `.image.repository`. |
-| `DEV_IMAGE_TAG_YQ_PATH` | yq path used to read the dev image tag. Default: `.image.tag`. |
-| `PROD_IMAGE_REPOSITORY_YQ_PATH` | yq path used to write the prod image repository. Default: `.image.repository`. |
-| `PROD_IMAGE_TAG_YQ_PATH` | yq path used to write the prod image tag. Default: `.image.tag`. |
+| `IMAGE_REPOSITORY_YQ_PATH` | yq path used to read the dev image repository and write the prod image repository. Default: `.image.repository`. |
+| `IMAGE_TAG_YQ_PATH` | yq path used to read the dev image tag and write the prod image tag. Default: `.image.tag`. |
 
 ## Promotion Rules
 
@@ -490,7 +480,7 @@ The production promotion is refused when:
 - the PR source branch is not `devel`;
 - the PR target branch is not `main`;
 - the PR has no approval in Bitbucket Data Center;
-- `values-dev.yaml` does not contain values at `DEV_IMAGE_REPOSITORY_YQ_PATH` or `DEV_IMAGE_TAG_YQ_PATH`;
+- `values-dev.yaml` does not contain values at `IMAGE_REPOSITORY_YQ_PATH` or `IMAGE_TAG_YQ_PATH`;
 - the dev image repository does not start with the expected dev Artifactory prefix.
 
 The promotion copies the image to prod Artifactory. It does not delete the image from dev Artifactory.
@@ -509,8 +499,8 @@ IMAGE_NAME=my-service
 Check that:
 
 - the image exists in dev Artifactory;
-- `values-dev.yaml` contains the expected repository at `DEV_IMAGE_REPOSITORY_YQ_PATH`;
-- `values-dev.yaml` contains the expected tag at `DEV_IMAGE_TAG_YQ_PATH`;
+- `values-dev.yaml` contains the expected repository at `IMAGE_REPOSITORY_YQ_PATH`;
+- `values-dev.yaml` contains the expected tag at `IMAGE_TAG_YQ_PATH`;
 - rerunning the same version does not create a useless Git commit.
 
 ### Application pipeline with BuildKit secret
@@ -548,6 +538,6 @@ Approve the PR and rerun the pipeline.
 Check that:
 
 - the image is copied from dev Artifactory to prod Artifactory;
-- `values-prod.yaml` contains the prod repository at `PROD_IMAGE_REPOSITORY_YQ_PATH`;
-- `values-prod.yaml` contains the tag read from `values-dev.yaml` at `PROD_IMAGE_TAG_YQ_PATH`;
+- `values-prod.yaml` contains the prod repository at `IMAGE_REPOSITORY_YQ_PATH`;
+- `values-prod.yaml` contains the tag read from `values-dev.yaml` at `IMAGE_TAG_YQ_PATH`;
 - rerunning the same promotion does not create a useless Git commit.

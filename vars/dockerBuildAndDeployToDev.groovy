@@ -12,8 +12,8 @@ def call(Map config = [:]) {
         deploymentRepoUrlDefault: '',
         deploymentBranchDefault: 'devel',
         valuesDevPathDefault: 'values-dev.yaml',
-        devImageRepositoryYqPathDefault: '.image.repository',
-        devImageTagYqPathDefault: '.image.tag',
+        imageRepositoryYqPathDefault: config.devImageRepositoryYqPathDefault ?: '.image.repository',
+        imageTagYqPathDefault: config.devImageTagYqPathDefault ?: '.image.tag',
         bitbucketCredentialsIdDefault: 'bitbucket-git',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
@@ -42,8 +42,8 @@ def call(Map config = [:]) {
             string(name: 'DEPLOYMENT_REPO_URL', defaultValue: "${cfg.deploymentRepoUrlDefault}", description: 'HTTPS URL of the ArgoCD/deployment Git repository.')
             string(name: 'DEPLOYMENT_BRANCH', defaultValue: "${cfg.deploymentBranchDefault}", description: 'Deployment branch to update.')
             string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file inside the deployment repository, for example helm/values-dev.yaml.')
-            string(name: 'DEV_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.devImageRepositoryYqPathDefault}", description: 'yq path to the dev image repository field.')
-            string(name: 'DEV_IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.devImageTagYqPathDefault}", description: 'yq path to the dev image tag field.')
+            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field.')
+            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field.')
             string(name: 'BITBUCKET_CREDENTIALS_ID', defaultValue: "${cfg.bitbucketCredentialsIdDefault}", description: 'Jenkins username/password credentials for Bitbucket Git push.')
 
             string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for deployment commits.')
@@ -69,8 +69,8 @@ def call(Map config = [:]) {
                             'DEPLOYMENT_REPO_URL',
                             'DEPLOYMENT_BRANCH',
                             'VALUES_DEV_PATH',
-                            'DEV_IMAGE_REPOSITORY_YQ_PATH',
-                            'DEV_IMAGE_TAG_YQ_PATH',
+                            'IMAGE_REPOSITORY_YQ_PATH',
+                            'IMAGE_TAG_YQ_PATH',
                             'BITBUCKET_CREDENTIALS_ID'
                         ].each { requireParam(it) }
 
@@ -79,8 +79,8 @@ def call(Map config = [:]) {
 
                         env.IMAGE_TAG = params.VERSION.trim()
                         env.IMAGE_NAME_CLEAN = cleanDockerPath(params.IMAGE_NAME)
-                        env.DEV_IMAGE_REPOSITORY_YQ_PATH = params.DEV_IMAGE_REPOSITORY_YQ_PATH.trim()
-                        env.DEV_IMAGE_TAG_YQ_PATH = params.DEV_IMAGE_TAG_YQ_PATH.trim()
+                        env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
+                        env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
                         env.DOCKER_BUILD_SECRETS_EFFECTIVE = normalizeMultiline(params.DOCKER_BUILD_SECRETS)
                         env.ARTIFACTORY_DEV_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_DEV_REGISTRY)
                         env.DEV_IMAGE_REPOSITORY = joinDockerPath([
@@ -193,7 +193,7 @@ EOF
 
                             export IMAGE_REPOSITORY_VALUE="$DEV_IMAGE_REPOSITORY"
                             export IMAGE_TAG_VALUE="$IMAGE_TAG"
-                            yq -i 'eval(strenv(DEV_IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(DEV_IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_DEV_PATH"
+                            yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_DEV_PATH"
 
                             if git diff --quiet -- "$VALUES_DEV_PATH"; then
                                 echo "No dev values change to commit."

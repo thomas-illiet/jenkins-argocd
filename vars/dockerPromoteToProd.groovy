@@ -16,10 +16,8 @@ def call(Map config = [:]) {
         artifactoryProdCredentialsIdDefault: 'artifactory-prod-docker',
         valuesDevPathDefault: 'values-dev.yaml',
         valuesProdPathDefault: 'values-prod.yaml',
-        devImageRepositoryYqPathDefault: '.image.repository',
-        devImageTagYqPathDefault: '.image.tag',
-        prodImageRepositoryYqPathDefault: '.image.repository',
-        prodImageTagYqPathDefault: '.image.tag',
+        imageRepositoryYqPathDefault: config.devImageRepositoryYqPathDefault ?: config.prodImageRepositoryYqPathDefault ?: '.image.repository',
+        imageTagYqPathDefault: config.devImageTagYqPathDefault ?: config.prodImageTagYqPathDefault ?: '.image.tag',
         gitAuthorNameDefault: 'jenkins',
         gitAuthorEmailDefault: 'jenkins@example.com'
     ] + config
@@ -51,10 +49,8 @@ def call(Map config = [:]) {
 
             string(name: 'VALUES_DEV_PATH', defaultValue: "${cfg.valuesDevPathDefault}", description: 'Relative path to the dev values file, for example helm/values-dev.yaml.')
             string(name: 'VALUES_PROD_PATH', defaultValue: "${cfg.valuesProdPathDefault}", description: 'Relative path to the prod values file, for example helm/values-prod.yaml.')
-            string(name: 'DEV_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.devImageRepositoryYqPathDefault}", description: 'yq path to the dev image repository field.')
-            string(name: 'DEV_IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.devImageTagYqPathDefault}", description: 'yq path to the dev image tag field.')
-            string(name: 'PROD_IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.prodImageRepositoryYqPathDefault}", description: 'yq path to the prod image repository field.')
-            string(name: 'PROD_IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.prodImageTagYqPathDefault}", description: 'yq path to the prod image tag field.')
+            string(name: 'IMAGE_REPOSITORY_YQ_PATH', defaultValue: "${cfg.imageRepositoryYqPathDefault}", description: 'yq path to the image repository field used in both dev and prod values.')
+            string(name: 'IMAGE_TAG_YQ_PATH', defaultValue: "${cfg.imageTagYqPathDefault}", description: 'yq path to the image tag field used in both dev and prod values.')
             string(name: 'GIT_AUTHOR_NAME', defaultValue: "${cfg.gitAuthorNameDefault}", description: 'Git author name used for promotion commits.')
             string(name: 'GIT_AUTHOR_EMAIL', defaultValue: "${cfg.gitAuthorEmailDefault}", description: 'Git author email used for promotion commits.')
         }
@@ -82,10 +78,8 @@ def call(Map config = [:]) {
                             'ARTIFACTORY_PROD_CREDENTIALS_ID',
                             'VALUES_DEV_PATH',
                             'VALUES_PROD_PATH',
-                            'DEV_IMAGE_REPOSITORY_YQ_PATH',
-                            'DEV_IMAGE_TAG_YQ_PATH',
-                            'PROD_IMAGE_REPOSITORY_YQ_PATH',
-                            'PROD_IMAGE_TAG_YQ_PATH'
+                            'IMAGE_REPOSITORY_YQ_PATH',
+                            'IMAGE_TAG_YQ_PATH'
                         ].each { requireParam(it) }
 
                         def prId = params.BITBUCKET_PR_ID?.trim() ?: env.CHANGE_ID?.trim()
@@ -101,10 +95,8 @@ def call(Map config = [:]) {
                         }
 
                         env.BITBUCKET_BASE_URL_CLEAN = params.BITBUCKET_BASE_URL.trim().replaceAll(/\/+$/, '')
-                        env.DEV_IMAGE_REPOSITORY_YQ_PATH = params.DEV_IMAGE_REPOSITORY_YQ_PATH.trim()
-                        env.DEV_IMAGE_TAG_YQ_PATH = params.DEV_IMAGE_TAG_YQ_PATH.trim()
-                        env.PROD_IMAGE_REPOSITORY_YQ_PATH = params.PROD_IMAGE_REPOSITORY_YQ_PATH.trim()
-                        env.PROD_IMAGE_TAG_YQ_PATH = params.PROD_IMAGE_TAG_YQ_PATH.trim()
+                        env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
+                        env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
                         env.ARTIFACTORY_DEV_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_DEV_REGISTRY)
                         env.ARTIFACTORY_PROD_REGISTRY_CLEAN = cleanDockerPath(params.ARTIFACTORY_PROD_REGISTRY)
                         env.DEV_IMAGE_PREFIX = joinDockerPath([
@@ -206,18 +198,18 @@ EOF
                         script {
                             env.DEV_IMAGE_REPOSITORY = sh(
                                 returnStdout: true,
-                                script: 'yq -r \'eval(strenv(DEV_IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
+                                script: 'yq -r \'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
                             ).trim()
                             env.PROMOTED_IMAGE_TAG = sh(
                                 returnStdout: true,
-                                script: 'yq -r \'eval(strenv(DEV_IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
+                                script: 'yq -r \'eval(strenv(IMAGE_TAG_YQ_PATH)) // ""\' "$VALUES_DEV_PATH"'
                             ).trim()
 
                             if (!env.DEV_IMAGE_REPOSITORY || env.DEV_IMAGE_REPOSITORY == 'null') {
-                                error("Missing value at ${env.DEV_IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_DEV_PATH}")
+                                error("Missing value at ${env.IMAGE_REPOSITORY_YQ_PATH} in ${params.VALUES_DEV_PATH}")
                             }
                             if (!env.PROMOTED_IMAGE_TAG || env.PROMOTED_IMAGE_TAG == 'null') {
-                                error("Missing value at ${env.DEV_IMAGE_TAG_YQ_PATH} in ${params.VALUES_DEV_PATH}")
+                                error("Missing value at ${env.IMAGE_TAG_YQ_PATH} in ${params.VALUES_DEV_PATH}")
                             }
                             if (!env.DEV_IMAGE_REPOSITORY.startsWith("${env.DEV_IMAGE_PREFIX}/")) {
                                 error("Dev image repository '${env.DEV_IMAGE_REPOSITORY}' does not start with expected prefix '${env.DEV_IMAGE_PREFIX}'.")
@@ -278,7 +270,7 @@ EOF
 
                                 export IMAGE_REPOSITORY_VALUE="$PROD_IMAGE_REPOSITORY"
                                 export IMAGE_TAG_VALUE="$PROMOTED_IMAGE_TAG"
-                                yq -i 'eval(strenv(PROD_IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(PROD_IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PROD_PATH"
+                                yq -i 'eval(strenv(IMAGE_REPOSITORY_YQ_PATH)) = strenv(IMAGE_REPOSITORY_VALUE) | eval(strenv(IMAGE_TAG_YQ_PATH)) = strenv(IMAGE_TAG_VALUE)' "$VALUES_PROD_PATH"
 
                                 if git diff --quiet -- "$VALUES_PROD_PATH"; then
                                     echo "No prod values change to commit."

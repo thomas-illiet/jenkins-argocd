@@ -45,10 +45,8 @@ apps:
 This is handled by:
 
 ```groovy
-devImageRepositoryYqPathDefault: '.apps.myService.image.repository'
-devImageTagYqPathDefault: '.apps.myService.image.tag'
-prodImageRepositoryYqPathDefault: '.apps.myService.image.repository'
-prodImageTagYqPathDefault: '.apps.myService.image.tag'
+imageRepositoryYqPathDefault: '.apps.myService.image.repository'
+imageTagYqPathDefault: '.apps.myService.image.tag'
 ```
 
 ## How to use
