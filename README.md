@@ -109,7 +109,7 @@ flowchart TD
         D --> E{"Dev image already exists?"}
         E -->|Yes| F["Stop: overwrite refused"]
         E -->|No| G["docker build with optional BuildKit secrets"]
-        G --> H["docker push image:VERSION to dev"]
+        G --> H["docker push image:VERSION-timestamp to dev"]
         H --> I["Prepare SSH known_hosts and core.sshCommand"]
         I --> J["Clone deployment repo on configured branch"]
         J --> K["Update configured values.yaml"]
@@ -142,7 +142,7 @@ By default, the library updates and reads:
 ```yaml
 image:
   repository: artifactory-dev.example.com/docker-dev-local/my-service
-  tag: 1.2.3
+  tag: 1.2.3-20260522143015
 ```
 
 The file path and YAML fields are configurable:
@@ -160,7 +160,7 @@ apps:
   myService:
     image:
       repository: artifactory-dev.example.com/docker-dev-local/my-service
-      tag: 1.2.3
+      tag: 1.2.3-20260522143015
 ```
 
 Use:
@@ -184,8 +184,10 @@ Dev and prod use the same values structure. Promotion reads the dev image refere
 `dockerBuildAndDeployToDev(Map config = [:])`:
 
 - validates required parameters;
+- computes the immutable image tag as `VERSION-yyyyMMddHHmmss` from the Jenkins build start time;
 - checks whether the dev image tag already exists before building;
 - builds the Docker image;
+- forwards the original `VERSION` parameter to Docker as `--build-arg VERSION=<VERSION>`;
 - supports optional Docker BuildKit `--secret` entries;
 - pushes the image to dev Artifactory;
 - prepares `~/.ssh/known_hosts` with `ssh-keyscan`;
@@ -218,7 +220,7 @@ Main parameters:
 
 | Parameter | Description |
 | --- | --- |
-| `VERSION` | Required Docker image tag. |
+| `VERSION` | Required application version. It is forwarded to Docker as `--build-arg VERSION=<VERSION>` and used as the prefix for the immutable image tag. |
 | `IMAGE_NAME` | Docker image name, for example `my-service`. |
 | `DOCKERFILE_PATH` | Dockerfile path. Default: `Dockerfile`. |
 | `DOCKER_BUILD_CONTEXT` | Docker build context. Default: `.`. |
@@ -273,7 +275,7 @@ id=npm_token,env=NPM_TOKEN
 The shared library runs:
 
 ```sh
-DOCKER_BUILDKIT=1 docker build --secret id=npm_token,env=NPM_TOKEN ...
+DOCKER_BUILDKIT=1 docker build --build-arg VERSION="$VERSION" --secret id=npm_token,env=NPM_TOKEN ...
 ```
 
 Dockerfile example:
@@ -354,8 +356,9 @@ Application pipeline:
 
 - run a build with `VERSION=1.2.3-test` and `IMAGE_NAME=my-service`;
 - check that the image exists in dev Artifactory;
-- check that `VALUES_PATH` contains the expected repository and tag;
-- rerun the same version and verify the pipeline fails before building or pushing the existing dev image.
+- check that `VALUES_PATH` contains the expected repository and a tag like `1.2.3-test-yyyyMMddHHmmss`;
+- rerun the same version and verify a new timestamped tag is generated;
+- verify the image existence check still refuses an exact tag collision.
 
 Promotion pipeline:
 

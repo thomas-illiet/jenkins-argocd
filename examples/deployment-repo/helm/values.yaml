@@ -2,7 +2,7 @@ apps:
   myService:
     image:
       repository: artifactory-dev.example.com/docker-dev-local/my-service
-      tag: 1.2.3
+      tag: 1.2.3-20260522143015
     replicas: 1
     resources:
       requests:

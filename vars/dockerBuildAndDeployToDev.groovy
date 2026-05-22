@@ -31,7 +31,7 @@ def call(Map config = [:]) {
         }
 
         parameters {
-            string(name: 'VERSION', defaultValue: "${cfg.versionDefault}", description: 'Required Docker image tag to build and deploy to dev.')
+            string(name: 'VERSION', defaultValue: "${cfg.versionDefault}", description: 'Required application version. It is forwarded to Docker as build arg VERSION and used as the image tag prefix.')
             string(name: 'IMAGE_NAME', defaultValue: "${cfg.imageNameDefault}", description: 'Docker image name, for example my-service.')
             string(name: 'DOCKERFILE_PATH', defaultValue: "${cfg.dockerfilePathDefault}", description: 'Path to the Dockerfile in the application repository.')
             string(name: 'DOCKER_BUILD_CONTEXT', defaultValue: "${cfg.dockerBuildContextDefault}", description: 'Docker build context.')
@@ -85,7 +85,9 @@ def call(Map config = [:]) {
                         validateDockerBuildSecrets(params.DOCKER_BUILD_SECRETS)
                         parseSecretTextCredentialBindings(params.DOCKER_SECRET_TEXT_CREDENTIALS)
 
-                        env.IMAGE_TAG = params.VERSION.trim()
+                        env.VERSION = params.VERSION.trim()
+                        env.IMAGE_TIMESTAMP = new Date(currentBuild.startTimeInMillis).format('yyyyMMddHHmmss')
+                        env.IMAGE_TAG = "${env.VERSION}-${env.IMAGE_TIMESTAMP}"
                         env.IMAGE_NAME_CLEAN = cleanDockerPath(params.IMAGE_NAME)
                         env.IMAGE_REPOSITORY_YQ_PATH = params.IMAGE_REPOSITORY_YQ_PATH.trim()
                         env.IMAGE_TAG_YQ_PATH = params.IMAGE_TAG_YQ_PATH.trim()
@@ -155,6 +157,7 @@ def call(Map config = [:]) {
 
                                 DOCKER_BUILDKIT=1 docker build \
                                     "$@" \
+                                    --build-arg "VERSION=$VERSION" \
                                     -f "$DOCKERFILE_PATH" \
                                     -t "$DEV_IMAGE" \
                                     "$DOCKER_BUILD_CONTEXT"

@@ -7,6 +7,8 @@ dockerBuildAndDeployToDev()
 
 The pipeline supports Docker BuildKit secrets through DOCKER_BUILD_SECRETS and optional Jenkins secret text credentials through DOCKER_SECRET_TEXT_CREDENTIALS.
 
+VERSION is forwarded to docker build as --build-arg VERSION=<VERSION>. The pushed image tag is computed as VERSION-yyyyMMddHHmmss from currentBuild.startTimeInMillis, and that computed tag is written to the deployment values file.
+
 Before building, the pipeline checks whether the target dev image already exists and fails cleanly if the registry cannot accept an overwrite.
 
 Use GIT_CREDENTIALS_ID for deployment Git clone and push credentials. It must reference a Jenkins SSH Username with private key credential and is bound with sshUserPrivateKey.
